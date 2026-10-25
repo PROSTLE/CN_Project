@@ -1,0 +1,844 @@
+{
+  "run_id": "20261018-190421-143661",
+  "model_set_id": "ms-20261018-190421-143661",
+  "set_hash": "a501eaaf4c3b35537ebc15c7dece6cfecf9188b072b9e8c86ddc3c01ec7ebb62",
+  "classes_modelled": [
+    "Benign",
+    "DoS",
+    "DDoS",
+    "PortScan",
+    "BruteForce",
+    "WebAttack"
+  ],
+  "classes_without_data": [
+    "Botnet",
+    "Infiltration"
+  ],
+  "flows_per_split": {
+    "train": {
+      "Benign": 2883,
+      "BruteForce": 34,
+      "DDoS": 1,
+      "DoS": 4996,
+      "PortScan": 4302,
+      "WebAttack": 4796
+    },
+    "val": {
+      "Benign": 2280,
+      "BruteForce": 17,
+      "DDoS": 1,
+      "DoS": 4379,
+      "PortScan": 3715,
+      "WebAttack": 3101
+    },
+    "cal": {
+      "Benign": 733,
+      "BruteForce": 34,
+      "PortScan": 2003,
+      "WebAttack": 7481
+    },
+    "test": {
+      "Benign": 1279,
+      "DDoS": 1,
+      "DoS": 3641,
+      "WebAttack": 13789
+    }
+  },
+  "snapshots_per_split": {
+    "train": {
+      "Benign": 5000,
+      "WebAttack": 5000,
+      "DoS": 5000,
+      "PortScan": 4302,
+      "BruteForce": 102,
+      "DDoS": 1
+    },
+    "val": {
+      "Benign": 6434,
+      "WebAttack": 4764,
+      "DoS": 4388,
+      "PortScan": 3715,
+      "BruteForce": 51,
+      "DDoS": 1
+    },
+    "cal": {
+      "WebAttack": 10864,
+      "Benign": 2087,
+      "PortScan": 2003,
+      "BruteForce": 96
+    },
+    "test": {
+      "WebAttack": 17336,
+      "DoS": 3642,
+      "Benign": 3475,
+      "DDoS": 1
+    }
+  },
+  "summary": {
+    "ensemble": {
+      "macro_f1": 0.9997204002895335,
+      "pr_auc_macro": 0.9999875521170547,
+      "fpr_at_recall": 0.0,
+      "recall_threshold_met": true,
+      "accuracy": 0.9997546413674654
+    },
+    "gbdt": {
+      "macro_f1": 0.9996699385230365,
+      "pr_auc_macro": 0.9999589136173612,
+      "fpr_at_recall": 0.0,
+      "recall_threshold_met": true,
+      "accuracy": 0.9996728551566206
+    },
+    "xgb": {
+      "macro_f1": 0.999370397179729,
+      "pr_auc_macro": 0.9999411815266331,
+      "fpr_at_recall": 0.0,
+      "recall_threshold_met": true,
+      "accuracy": 0.9993866034186636
+    },
+    "ebm": {
+      "macro_f1": 0.9997204002895335,
+      "pr_auc_macro": 0.99998747417042,
+      "fpr_at_recall": 0.0,
+      "recall_threshold_met": true,
+      "accuracy": 0.9997546413674654
+    },
+    "cfc": {
+      "macro_f1": 0.9830429030500174,
+      "pr_auc_macro": 0.999851976080252,
+      "fpr_at_recall": 0.0,
+      "recall_threshold_met": true,
+      "accuracy": 0.985973664840108
+    },
+    "lstm": {
+      "macro_f1": 0.9838982256954589,
+      "pr_auc_macro": 0.9998520435723687,
+      "fpr_at_recall": 0.0,
+      "recall_threshold_met": true,
+      "accuracy": 0.9875684959515826
+    },
+    "gru": {
+      "macro_f1": 0.9709097263134633,
+      "pr_auc_macro": 0.9997690595473923,
+      "fpr_at_recall": 0.0,
+      "recall_threshold_met": true,
+      "accuracy": 0.9798396990267441
+    },
+    "cnn": {
+      "macro_f1": 0.9900196175106216,
+      "pr_auc_macro": 0.9999191252991717,
+      "fpr_at_recall": 0.0,
+      "recall_threshold_met": true,
+      "accuracy": 0.9912079823341785
+    },
+    "rf": {
+      "macro_f1": 0.9994709389858651,
+      "pr_auc_macro": 0.9999967281803509,
+      "fpr_at_recall": 0.0,
+      "recall_threshold_met": true,
+      "accuracy": 0.9995092827349309
+    },
+    "mlp": {
+      "macro_f1": 0.7382827890525484,
+      "pr_auc_macro": 0.7496364743524112,
+      "fpr_at_recall": 0.0,
+      "recall_threshold_met": true,
+      "accuracy": 0.9894904719064366
+    },
+    "ablation_gbdt_with_identity": {
+      "macro_f1": 0.9996067848030695,
+      "pr_auc_macro": 0.999981539838705,
+      "fpr_at_recall": 0.0,
+      "recall_threshold_met": true,
+      "accuracy": 0.9995910689457758
+    }
+  },
+  "per_class": {
+    "ensemble": {
+      "Benign": {
+        "precision": 1.0,
+        "recall": 0.9994244604316547,
+        "f1": 0.9997121473805411,
+        "support": 3475
+      },
+      "DoS": {
+        "precision": 0.9991765028822399,
+        "recall": 0.99945085118067,
+        "f1": 0.9993136582017845,
+        "support": 3642
+      },
+      "DDoS": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "support": 1
+      },
+      "PortScan": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 0
+      },
+      "BruteForce": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 0
+      },
+      "WebAttack": {
+        "precision": 0.9998269596816058,
+        "recall": 0.9998846331333641,
+        "f1": 0.9998557955758083,
+        "support": 17336
+      }
+    },
+    "gbdt": {
+      "Benign": {
+        "precision": 1.0,
+        "recall": 0.999136690647482,
+        "f1": 0.9995681589175184,
+        "support": 3475
+      },
+      "DoS": {
+        "precision": 0.9994507003570448,
+        "recall": 0.999176276771005,
+        "f1": 0.9993134697240148,
+        "support": 3642
+      },
+      "DDoS": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "support": 1
+      },
+      "PortScan": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 0
+      },
+      "BruteForce": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 0
+      },
+      "WebAttack": {
+        "precision": 0.9997116327354518,
+        "recall": 0.9998846331333641,
+        "f1": 0.9997981254506129,
+        "support": 17336
+      }
+    },
+    "xgb": {
+      "Benign": {
+        "precision": 1.0,
+        "recall": 0.9988489208633093,
+        "f1": 0.9994241289951051,
+        "support": 3475
+      },
+      "DoS": {
+        "precision": 0.9983530057644798,
+        "recall": 0.9986271279516749,
+        "f1": 0.9984900480439258,
+        "support": 3642
+      },
+      "DDoS": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "support": 1
+      },
+      "PortScan": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 0
+      },
+      "BruteForce": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 0
+      },
+      "WebAttack": {
+        "precision": 0.9994809389238134,
+        "recall": 0.9996538994000923,
+        "f1": 0.9995674116798846,
+        "support": 17336
+      }
+    },
+    "ebm": {
+      "Benign": {
+        "precision": 1.0,
+        "recall": 0.9994244604316547,
+        "f1": 0.9997121473805411,
+        "support": 3475
+      },
+      "DoS": {
+        "precision": 0.9991765028822399,
+        "recall": 0.99945085118067,
+        "f1": 0.9993136582017845,
+        "support": 3642
+      },
+      "DDoS": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "support": 1
+      },
+      "PortScan": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 0
+      },
+      "BruteForce": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 0
+      },
+      "WebAttack": {
+        "precision": 0.9998269596816058,
+        "recall": 0.9998846331333641,
+        "f1": 0.9998557955758083,
+        "support": 17336
+      }
+    },
+    "cfc": {
+      "Benign": {
+        "precision": 0.9990464081373173,
+        "recall": 0.9044604316546763,
+        "f1": 0.9494034133816645,
+        "support": 3475
+      },
+      "DoS": {
+        "precision": 0.9840238288654211,
+        "recall": 0.9978034047226798,
+        "f1": 0.9908657123381049,
+        "support": 3642
+      },
+      "DDoS": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "support": 1
+      },
+      "PortScan": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 0
+      },
+      "BruteForce": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 0
+      },
+      "WebAttack": {
+        "precision": 0.984102651450633,
+        "recall": 0.9998269497000462,
+        "f1": 0.9919024864802999,
+        "support": 17336
+      }
+    },
+    "lstm": {
+      "Benign": {
+        "precision": 1.0,
+        "recall": 0.9162589928057554,
+        "f1": 0.9562997447064123,
+        "support": 3475
+      },
+      "DoS": {
+        "precision": 0.972951258703803,
+        "recall": 0.9975288303130149,
+        "f1": 0.9850867678958786,
+        "support": 3642
+      },
+      "DDoS": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "support": 1
+      },
+      "PortScan": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 0
+      },
+      "BruteForce": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 0
+      },
+      "WebAttack": {
+        "precision": 0.9887050770108385,
+        "recall": 0.9997692662667282,
+        "f1": 0.9942063901795446,
+        "support": 17336
+      }
+    },
+    "gru": {
+      "Benign": {
+        "precision": 1.0,
+        "recall": 0.8618705035971223,
+        "f1": 0.9258114374034003,
+        "support": 3475
+      },
+      "DoS": {
+        "precision": 0.9336760925449872,
+        "recall": 0.9972542559033498,
+        "f1": 0.9644184811471057,
+        "support": 3642
+      },
+      "DDoS": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "support": 1
+      },
+      "PortScan": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 0
+      },
+      "BruteForce": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 0
+      },
+      "WebAttack": {
+        "precision": 0.9870728929384965,
+        "recall": 0.9998269497000462,
+        "f1": 0.9934089867033471,
+        "support": 17336
+      }
+    },
+    "cnn": {
+      "Benign": {
+        "precision": 0.9996939087848179,
+        "recall": 0.9398561151079137,
+        "f1": 0.9688519727083952,
+        "support": 3475
+      },
+      "DoS": {
+        "precision": 0.9950752393980848,
+        "recall": 0.9986271279516749,
+        "f1": 0.9968480197341373,
+        "support": 3642
+      },
+      "DDoS": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "support": 1
+      },
+      "PortScan": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 0
+      },
+      "BruteForce": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 0
+      },
+      "WebAttack": {
+        "precision": 0.988876212207644,
+        "recall": 0.9999423165666821,
+        "f1": 0.9943784775999541,
+        "support": 17336
+      }
+    },
+    "rf": {
+      "Benign": {
+        "precision": 1.0,
+        "recall": 0.9994244604316547,
+        "f1": 0.9997121473805411,
+        "support": 3475
+      },
+      "DoS": {
+        "precision": 0.9991751443497388,
+        "recall": 0.9978034047226798,
+        "f1": 0.9984888034070614,
+        "support": 3642
+      },
+      "DDoS": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "support": 1
+      },
+      "PortScan": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 0
+      },
+      "BruteForce": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 0
+      },
+      "WebAttack": {
+        "precision": 0.9994810586403736,
+        "recall": 0.9998846331333641,
+        "f1": 0.9996828051558581,
+        "support": 17336
+      }
+    },
+    "mlp": {
+      "Benign": {
+        "precision": 0.9941913787832467,
+        "recall": 0.9358273381294964,
+        "f1": 0.9641268900088942,
+        "support": 3475
+      },
+      "DoS": {
+        "precision": 0.9942528735632183,
+        "recall": 0.9975288303130149,
+        "f1": 0.9958881578947368,
+        "support": 3642
+      },
+      "DDoS": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 1
+      },
+      "PortScan": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 0
+      },
+      "BruteForce": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 0
+      },
+      "WebAttack": {
+        "precision": 0.9876768598813327,
+        "recall": 0.9986155976003692,
+        "f1": 0.9931161083065626,
+        "support": 17336
+      }
+    },
+    "ablation_gbdt_with_identity": {
+      "Benign": {
+        "precision": 1.0,
+        "recall": 0.9988489208633093,
+        "f1": 0.9994241289951051,
+        "support": 3475
+      },
+      "DoS": {
+        "precision": 0.9994505494505495,
+        "recall": 0.9989017023613399,
+        "f1": 0.9991760505355671,
+        "support": 3642
+      },
+      "DDoS": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "support": 1
+      },
+      "PortScan": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 0
+      },
+      "BruteForce": {
+        "precision": 0.0,
+        "recall": 0.0,
+        "f1": 0.0,
+        "support": 0
+      },
+      "WebAttack": {
+        "precision": 0.9997692928826855,
+        "recall": 0.9998846331333641,
+        "f1": 0.9998269596816058,
+        "support": 17336
+      }
+    }
+  },
+  "confusion": {
+    "ensemble": [
+      [
+        3473,
+        1,
+        0,
+        0,
+        0,
+        1
+      ],
+      [
+        0,
+        3640,
+        0,
+        0,
+        0,
+        2
+      ],
+      [
+        0,
+        0,
+        1,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        2,
+        0,
+        0,
+        0,
+        17334
+      ]
+    ],
+    "gbdt": [
+      [
+        3472,
+        0,
+        0,
+        1,
+        0,
+        2
+      ],
+      [
+        0,
+        3639,
+        0,
+        0,
+        0,
+        3
+      ],
+      [
+        0,
+        0,
+        1,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        2,
+        0,
+        0,
+        0,
+        17334
+      ]
+    ],
+    "ebm": [
+      [
+        3473,
+        1,
+        0,
+        0,
+        0,
+        1
+      ],
+      [
+        0,
+        3640,
+        0,
+        0,
+        0,
+        2
+      ],
+      [
+        0,
+        0,
+        1,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        2,
+        0,
+        0,
+        0,
+        17334
+      ]
+    ],
+    "cfc": [
+      [
+        3143,
+        56,
+        0,
+        1,
+        0,
+        275
+      ],
+      [
+        3,
+        3634,
+        0,
+        0,
+        0,
+        5
+      ],
+      [
+        0,
+        0,
+        1,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        0,
+        0,
+        0,
+        0,
+        0
+      ],
+      [
+        0,
+        3,
+        0,
+        0,
+        0,
+        17333
+      ]
+    ]
+  },
+  "ensemble_macro_f1_by_checkpoint": {
+    "16": 1.0,
+    "32": 1.0,
+    "8": 0.8887299316483865,
+    "end": 0.9997072537901743
+  },
+  "latency_single_snapshot": {
+    "gbdt": {
+      "p50_ms": 0.07131749998734449,
+      "p99_ms": 0.26636003004114284
+    },
+    "ebm": {
+      "p50_ms": 0.46669249991282413,
+      "p99_ms": 0.9444765497755729
+    },
+    "cfc": {
+      "p50_ms": 8.030481499645248,
+      "p99_ms": 13.191063009880967
+    },
+    "lstm": {
+      "p50_ms": 0.48414600018986675,
+      "p99_ms": 2.5956150501588136
+    },
+    "xgb": {
+      "p50_ms": 0.28670000006059126,
+      "p99_ms": 0.573913199959864
+    }
+  },
+  "params": {
+    "cfc": 5562,
+    "lstm": 7814,
+    "gru": 6998,
+    "cnn": 6902
+  },
+  "timings": {
+    "gbdt_train_s": 0.9754095077514648,
+    "xgb_train_s": 1.2102100849151611,
+    "ebm_train_s": 10.232848167419434,
+    "cfc_train_s": 71.50951862335205,
+    "lstm_train_s": 8.251812219619751,
+    "gru_train_s": 21.312050580978394,
+    "cnn_train_s": 5.7253313064575195,
+    "rf_train_s": 0.9595825672149658,
+    "mlp_train_s": 1.2442238330841064,
+    "attr_val_s_per_snapshot": 0.0013509782552719115,
+    "attr_cal_s_per_snapshot": 0.0012615198294321697,
+    "attr_test_s_per_snapshot": 0.0012686228354771931
+  },
+  "identity_gain_share_in_ablation": 0.013759858095726087,
+  "dropped_constant": [
+    "k_src_dsts",
+    "t_reputation",
+    "l_blacklisted",
+    "l_whitelisted"
+  ],
+  "ensemble": {
+    "weights": [
+      0.0,
+      1.0,
+      0.0
+    ],
+    "temperature": 1.5
+  },
+  "environment": "WSL2 lab (network namespaces, xdpgeneric on veth)",
+  "config_sha": "21a69c6ff25a1bc9eacd0ca8f30b49aa8ebe9f7f8a843287c3760bdd82c58606",
+  "seconds_total": 154.5338499546051
+}
