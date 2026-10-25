@@ -1,0 +1,27 @@
+{
+  "archive": "/var/lib/glasswall/capture/online_20261018-193456.events.gz",
+  "archive_truncated_live": true,
+  "online_snapshots": 14733,
+  "offline_snapshots": 14135,
+  "matched_keys": 1915,
+  "identical_hash": 1911,
+  "identical_share": 0.997911227154047,
+  "by_checkpoint": {
+    "end": {
+      "n": 1277,
+      "identical": 1275
+    },
+    "16": {
+      "n": 199,
+      "identical": 198
+    },
+    "8": {
+      "n": 274,
+      "identical": 274
+    },
+    "32": {
+      "n": 165,
+      "identical": 164
+    }
+  }
+}
