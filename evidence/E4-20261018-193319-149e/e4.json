@@ -1,0 +1,57 @@
+{
+  "hello": "OK 8 path=xdp_generic ifaces=v-att,v-cli,v-vic realizable=0:k_src_pkts,1:k_src_syn_ratio_pm,2:k_src_rst_ratio_pm,3:k_src_mean_size,4:k_src_dports,5:k_src_dsts,6:k_src_pps,7:k_src_syn_count max_rules=32 max_pred=4",
+  "swap": {
+    "baseline": {
+      "tx": 6000,
+      "rx": 6000,
+      "lost": 0,
+      "flips": 0,
+      "stage_flip_us_p50": null,
+      "stage_flip_us_max": null
+    },
+    "with_flips": {
+      "tx": 6000,
+      "rx": 6000,
+      "lost": 0,
+      "flips": 300,
+      "stage_flip_us_p50": 44988.69400049443,
+      "stage_flip_us_max": 54394.38700068422
+    }
+  },
+  "flood": [
+    {
+      "mode": "none",
+      "xdp_seen": 156156,
+      "xdp_drop_src": 0,
+      "netfilter_drop": null,
+      "seconds": 5,
+      "seen_pps": 31231.2,
+      "host_sys_softirq_share": 0.14631317315658657
+    },
+    {
+      "mode": "xdp",
+      "xdp_seen": 341921,
+      "xdp_drop_src": 341901,
+      "netfilter_drop": null,
+      "seconds": 5,
+      "seen_pps": 68384.2,
+      "host_sys_softirq_share": 0.07484783681526568
+    },
+    {
+      "mode": "netfilter",
+      "xdp_seen": 169512,
+      "xdp_drop_src": 0,
+      "netfilter_drop": 169511,
+      "seconds": 5,
+      "seen_pps": 33902.4,
+      "host_sys_softirq_share": 0.1449419568822554
+    }
+  ],
+  "params": {
+    "ping_interval_s": 0.001,
+    "ping_count": 6000,
+    "flips": 300,
+    "flood_s": 5
+  },
+  "environment": "WSL2 lab (network namespaces, xdpgeneric on veth)"
+}
