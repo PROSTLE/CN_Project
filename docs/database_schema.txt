@@ -1,0 +1,527 @@
+==============================================================================
+GLASSWALL - DATABASE & DATA-STRUCTURE SCHEMA                       v1.0
+Stores: PostgreSQL (ledger, rules, review queue, config, experiments) [SRC],
+        Redis (decision/event stream) [SRC],
+        BPF maps (kernel enforcement table + counters) [SRC],
+        Parquet files (datasets, sequences, replay buffer) [SRC].
+Tags: [SRC] from ideation v3, [PROPOSED] engineering choice, [LEARNED] fitted
+value - never hardcode.
+CONFIDENTIAL.
+==============================================================================
+
+------------------------------------------------------------------------------
+0. DESIGN PRINCIPLES
+------------------------------------------------------------------------------
+  - Postgres is the system of record. Kernel maps are the enforcement truth;
+    the DB keeps a MIRROR (enforcement_entries) for UI/audit, reconciled by
+    the agent.
+  - All tunables live in DB tables with version + provenance (which
+    validation run produced them). Nothing learned is hardcoded.
+  - Ledger tables are append-only: UPDATE/DELETE blocked by trigger and by
+    role grants. (Demo step D5 deliberately tampers as DB superuser to show
+    the verifier catches it.)
+  - Raw IPs/ports are stored for enforcement and audit ONLY; they are never
+    columns of any training feature table [SRC hygiene].
+  - Timestamps: TIMESTAMPTZ, UTC. IDs: BIGSERIAL for high-volume tables, UUID
+    for entities referenced across services [PROPOSED].
+  - Migrations: Alembic (Python) [PROPOSED]. File: db/migrations/.
+
+------------------------------------------------------------------------------
+1. ENUM TYPES
+------------------------------------------------------------------------------
+  decision_action     : 'ALLOW', 'ALLOW_SHADOW_LOG', 'BLOCK', 'QUARANTINE'
+  kernel_action       : 'PASS', 'DROP', 'RATE_LIMIT'
+  traffic_class       : 'Benign','DoS','DDoS','PortScan','BruteForce',
+                        'Botnet','WebAttack','Infiltration'      [SRC P3]
+                        (stored as a lookup table class_labels, not enum,
+                         so datasets with extra classes can be mapped)
+  attribution_source  : 'GBDT_TREESHAP','EBM_TERMS','CFC_IG',
+                        'LIME_OFFLINE','KERNELSHAP_OFFLINE'
+  model_family        : 'LIGHTGBM','XGBOOST','EBM','CFC_NCP','RF','MLP',
+                        'LSTM','GRU','CNN1D','TRANSFORMER','MAMBA'
+  rule_status         : 'PROPOSED','FIDELITY_FAILED','CANARY','CANARY_FAILED',
+                        'PROMOTED','REJECTED','EXPIRED','ROLLED_BACK'
+  ticket_status       : 'OPEN','IN_REVIEW','RESOLVED','AUTO_CLOSED'
+  label_source        : 'ADMIN_VERDICT','HONEYPOT','SIGNATURE','REPLAY',
+                        'LAB_CONSTRUCTION','DATASET'
+  policy_mode         : 'FAIL_CLOSED','FAIL_OPEN_RATE_LIMIT'      [SRC]
+  checkpoint          : 8, 16, 32, 'FLOW_END' (stored as SMALLINT, 0=end)
+  enforcement_path    : 'XDP_GENERIC','TC_EBPF','NFTABLES'        [SRC]
+  user_role           : 'ADMIN','ANALYST','AUDITOR','DEMO'        [PROPOSED]
+
+------------------------------------------------------------------------------
+2. REFERENCE / CONFIG TABLES
+------------------------------------------------------------------------------
+2.1 feature_groups                                   [SRC section 2]
+  group_id        TEXT PK              -- 'G1'..'G14'
+  name            TEXT NOT NULL        -- e.g. 'TCP-flag behaviour'
+  description     TEXT
+  display_order   SMALLINT
+  Seed rows (from ideation, not invented):
+    G1 TCP-flag behaviour (SYN/ACK/FIN/RST ratios) | G2 Packet-size distribution
+    G3 Inter-arrival timing | G4 Rate (pps/bps) | G5 Port fan-out
+    G6 Host fan-out | G7 Payload-independent length stats
+    G8 Connection state | G9 Direction/asymmetry | G10 Source history
+    G11 Threat-intel/reputation | G12 Flow duration/lifecycle
+    G13 Protocol mix | G14 List membership (black/white)
+
+2.2 features
+  feature_name        TEXT PK
+  group_id            TEXT FK -> feature_groups NOT NULL
+  source              TEXT CHECK IN ('FLOW','SEQUENCE_CHANNEL','CONTEXT')
+  kernel_realizable   BOOLEAN NOT NULL  -- true only if DP computes it
+  kernel_map_field    TEXT NULL         -- which BPF counter backs it
+  unit                TEXT
+  dtype               TEXT
+  is_identity         BOOLEAN DEFAULT false -- IP/port; must be false for any
+                                            -- feature used in training
+  CHECK (NOT is_identity OR NOT kernel_realizable OR true)  -- doc only
+  NOTE: the rule compiler may ONLY reference rows with kernel_realizable=true.
+
+2.3 class_labels
+  class_id SMALLINT PK, name TEXT UNIQUE, is_attack BOOLEAN NOT NULL
+
+2.4 dataset_label_map
+  dataset TEXT, raw_label TEXT, class_id FK, PRIMARY KEY(dataset, raw_label)
+
+2.5 config_versions  (all [LEARNED] / tunable parameters, versioned)
+  config_id        UUID PK
+  created_at       TIMESTAMPTZ
+  created_by       TEXT
+  source_run_id    UUID FK -> experiment_runs NULL  -- provenance
+  ecs_k            SMALLINT     [LEARNED]
+  ecs_alpha        REAL         [LEARNED] CHECK 0..1
+  tau_hi           REAL         [LEARNED]
+  tau_lo           REAL         [LEARNED] CHECK (tau_lo < tau_hi)
+  fpr_budget       REAL         (policy input for tau learning)
+  aci_gamma        REAL
+  aci_alpha_target REAL
+  checkpoints      SMALLINT[]   -- default from SRC: {8,16,32}
+  seq_len_n        SMALLINT     -- SRC: 32
+  ig_steps         SMALLINT     -- SRC: ~16
+  rule_fidelity_min_agreement REAL  [LEARNED/policy]
+  rule_fidelity_max_fpr       REAL  [LEARNED/policy]
+  canary_seconds              INT
+  rule_default_ttl_seconds    INT
+  rollback_fp_limit           REAL
+  quarantine_rate_pps         INT   -- token bucket rate for quarantine
+  quarantine_burst            INT
+  policy                      policy_mode
+  ledger_batch_size           INT
+  ledger_batch_max_seconds    INT
+  is_active                   BOOLEAN  -- exactly one active (partial unique idx)
+  raw                          JSONB   -- full YAML snapshot
+  sha256                       TEXT    -- hash of raw, logged to ledger
+
+2.6 safety_allowlist   [SRC section 6]
+  id SERIAL PK, cidr CIDR NULL, proto TEXT, port INT, description TEXT,
+  immutable BOOLEAN DEFAULT true
+  Loaded into the kernel allow map at agent start. Rule compiler and API
+  refuse any rule/verdict that would match these entries.
+
+2.7 users [PROPOSED]
+  user_id UUID PK, username TEXT UNIQUE, password_hash TEXT (argon2),
+  role user_role, created_at, disabled BOOLEAN
+2.8 sessions [PROPOSED]
+  session_id UUID PK, user_id FK, created_at, expires_at, ip_hint TEXT
+2.9 ui_audit_log [PROPOSED]
+  id BIGSERIAL, user_id FK, action TEXT, target_type TEXT, target_id TEXT,
+  payload JSONB, at TIMESTAMPTZ
+  (records accept/reject rule, verdicts, policy change, export, etc.)
+
+------------------------------------------------------------------------------
+3. MODELS
+------------------------------------------------------------------------------
+3.1 model_artifacts
+  model_id        UUID PK
+  family          model_family
+  role            TEXT CHECK IN ('GATE','SHADOW','TEMPORAL','BASELINE',
+                                 'ABLATION','CALIBRATOR')
+  file_path       TEXT           -- path inside models/ volume
+  file_sha256     TEXT NOT NULL  -- extended into PCR
+  framework_ver   TEXT
+  trained_at      TIMESTAMPTZ
+  train_run_id    UUID FK -> experiment_runs
+  feature_list    TEXT[]         -- must all exist in features, no identity
+  hyperparams     JSONB
+  metrics         JSONB          -- copied from run, [MEASURED]
+  status          TEXT CHECK IN ('CANDIDATE','ACTIVE','RETIRED')
+
+3.2 model_sets   (what the ledger calls "model-set version")
+  model_set_id    UUID PK
+  gbdt_model_id   UUID FK model_artifacts
+  ebm_model_id    UUID FK
+  cfc_model_id    UUID FK
+  calibrator_id   UUID FK
+  conformal_cal_id UUID FK -> calibration_sets
+  set_sha256      TEXT  -- hash over member hashes (canonical order)
+  pcr_extended_at TIMESTAMPTZ
+  activated_at    TIMESTAMPTZ
+  retired_at      TIMESTAMPTZ NULL
+  UNIQUE partial index: only one row with retired_at IS NULL AND active.
+
+3.3 calibration_sets
+  cal_id UUID PK, created_at, dataset_window TSTZRANGE, n_samples INT,
+  per_class_scores_path TEXT (parquet), reason TEXT ('INITIAL','DRIFT',
+  'SCHEDULED','MANUAL')
+
+3.4 aci_state   (persisted online conformal state)
+  id BIGSERIAL PK, model_set_id FK, class_id FK NULL (Mondrian per class),
+  alpha_t REAL, err_t SMALLINT, updated_at TIMESTAMPTZ, label_id FK NULL
+  (latest row per class = current alpha_t; history kept for E2 plots)
+
+------------------------------------------------------------------------------
+4. FLOWS, DECISIONS, ATTRIBUTIONS (hot-path output)
+------------------------------------------------------------------------------
+4.1 flows
+  flow_id         BIGSERIAL PK
+  flow_key        TEXT UNIQUE      -- canonical 5-tuple + start epoch
+  src_ip INET, dst_ip INET, src_port INT, dst_port INT, proto SMALLINT
+  iface_in        TEXT
+  first_seen      TIMESTAMPTZ
+  last_seen       TIMESTAMPTZ
+  packets         BIGINT, bytes BIGINT
+  final_action    decision_action NULL
+  lab_label       SMALLINT FK class_labels NULL  -- known by construction
+  lab_scenario_id UUID FK attack_runs NULL
+  INDEX (first_seen), INDEX (src_ip, first_seen)
+  Partitioning by day [PROPOSED] (pg native RANGE on first_seen).
+
+4.2 feature_snapshots
+  snapshot_id   BIGSERIAL PK
+  flow_id       FK
+  checkpoint    SMALLINT
+  feature_vec   JSONB or BYTEA (float32 array; schema = features order ver)
+  sequence      BYTEA NULL (N x channels float32)
+  feature_hash  TEXT  -- SHA-256 of canonical bytes; goes to ledger
+  feature_schema_ver TEXT
+
+4.3 decisions
+  decision_id     BIGSERIAL PK
+  flow_id         FK flows
+  snapshot_id     FK feature_snapshots
+  checkpoint      SMALLINT
+  model_set_id    FK model_sets
+  config_id       FK config_versions
+  probs_gbdt      REAL[]   -- per class, order = class_labels.class_id
+  probs_ebm       REAL[]
+  probs_cfc       REAL[]
+  probs_ensemble  REAL[]   -- calibrated
+  pred_class      SMALLINT FK
+  conformal_set   SMALLINT[]   -- class ids; empty = OOD
+  alpha_t_used    REAL
+  ecs             REAL CHECK 0..1
+  action          decision_action
+  adversarial_flag BOOLEAN
+  decision_reason TEXT  -- which decision-table row fired (e.g. 'R3')
+  kernel_action   kernel_action
+  rule_id         UUID FK rules NULL  -- if a compiled rule matched first
+  policy          policy_mode
+  latency_us      INT   [MEASURED]
+  decided_at      TIMESTAMPTZ
+  ledger_seq      BIGINT FK ledger_entries NULL
+  INDEX (decided_at), INDEX (action, decided_at), INDEX (adversarial_flag)
+
+4.4 attributions  (group level - what ECS, UI and compiler use)
+  decision_id   FK decisions
+  source        attribution_source
+  group_id      FK feature_groups
+  value         REAL     -- signed: + toward malicious, - toward benign
+  rank          SMALLINT -- 1 = top
+  PRIMARY KEY (decision_id, source, group_id)
+
+4.5 ecs_pairs
+  decision_id FK, source_i attribution_source, source_j attribution_source,
+  jaccard_k REAL, sign_agree REAL, a_ij REAL,
+  PRIMARY KEY (decision_id, source_i, source_j)
+
+4.6 packet_attributions  (CfC per-time-step view, "which packets mattered")
+  decision_id FK, packet_index SMALLINT (0..N-1), channel TEXT
+  ('size','direction','flags','delta_t'), value REAL
+  PRIMARY KEY (decision_id, packet_index, channel)
+
+4.7 feature_attributions (optional raw, pre-grouping; for audit)
+  decision_id FK, source, feature_name FK features, value REAL
+
+4.8 offline_explanations  (LIME / KernelSHAP, on demand)
+  id BIGSERIAL, decision_id FK, method attribution_source,
+  n_samples INT, seed INT, group_values JSONB, created_at,
+  disagreement_vs_hotpath REAL   -- input to Invention 5
+
+4.9 adversarial_signals  (Invention 5)
+  decision_id FK PK
+  ecs_collapse      BOOLEAN
+  lipschitz_est     REAL
+  offline_disagree  REAL NULL
+  ood_score         REAL
+  flagged           BOOLEAN
+  details           JSONB
+
+4.10 counterfactuals
+  id BIGSERIAL, decision_id FK, target_action decision_action,
+  changes JSONB  -- [{feature, from, to}] realizable features only
+  method TEXT ('DICE'), created_at
+
+4.11 narrations
+  decision_id FK PK, model_name TEXT, prompt_json JSONB, raw_text TEXT,
+  final_text TEXT, verified BOOLEAN, fallback_used BOOLEAN,
+  rejected_tokens TEXT[], latency_ms INT, created_at
+
+------------------------------------------------------------------------------
+5. ENFORCEMENT MIRROR (DB view of kernel state)
+------------------------------------------------------------------------------
+5.1 enforcement_entries
+  entry_id      BIGSERIAL PK
+  map_name      TEXT CHECK IN ('flow_verdict','src_verdict','lpm_prefix',
+                               'rule_array')
+  key_text      TEXT        -- 5-tuple / src ip / cidr / rule slot
+  action        kernel_action
+  rate_pps      INT NULL, burst INT NULL
+  ttl_seconds   INT
+  expires_at    TIMESTAMPTZ
+  origin_decision_id BIGINT FK NULL
+  origin_rule_id     UUID FK NULL
+  written_at    TIMESTAMPTZ
+  removed_at    TIMESTAMPTZ NULL
+  removal_reason TEXT ('TTL','ROLLBACK','ADMIN','SUPERSEDED')
+
+5.2 enforcement_path_log
+  id SERIAL, recorded_at, path enforcement_path, iface TEXT, mode TEXT,
+  kernel_release TEXT, btf_present BOOLEAN, notes TEXT
+  (records which of XDP/tc/nft actually works - Week-1 requirement)
+
+------------------------------------------------------------------------------
+6. RULES (Invention 3)
+------------------------------------------------------------------------------
+6.1 rule_clusters
+  cluster_id UUID PK, created_at, method TEXT, n_flows INT,
+  centroid_groups JSONB  -- mean group attributions
+  member_decision_ids BIGINT[]
+
+6.2 rules
+  rule_id        UUID PK
+  version        INT
+  cluster_id     FK rule_clusters
+  attack_class   SMALLINT FK class_labels
+  action         kernel_action
+  confidence     REAL  [MEASURED from fidelity]
+  status         rule_status
+  human_text     TEXT  -- e.g. "SYN-ratio > x AND ..." (generated)
+  distill_method TEXT ('SHALLOW_TREE','RULE_LIST')
+  max_depth      SMALLINT
+  ttl_seconds    INT
+  kernel_slot    SMALLINT NULL  -- index in rule array
+  created_at, canary_started_at, promoted_at, expires_at, retired_at
+  created_by     TEXT ('COMPILER' or user)
+  accepted_by    UUID FK users NULL
+
+6.3 rule_predicates  (realizability enforced by FK + trigger)
+  rule_id FK, ord SMALLINT, feature_name FK features, op TEXT CHECK IN
+  ('>','>=','<','<=','=='), threshold REAL, PRIMARY KEY(rule_id, ord)
+  TRIGGER: reject insert if features.kernel_realizable = false.
+  TRIGGER: reject if predicate set could match safety_allowlist entries
+  (checked in application layer; trigger re-checks port/cidr literals).
+
+6.4 fidelity_certificates
+  cert_id UUID PK, rule_id FK UNIQUE per version,
+  replay_window TSTZRANGE, n_benign INT, n_attack INT,
+  agreement REAL, fpr REAL, thresholds_used JSONB (from config_version),
+  config_id FK, passed BOOLEAN, cert_json JSONB (canonical),
+  signature BYTEA (Ed25519), key_id TEXT, issued_at
+
+6.5 canary_runs
+  canary_id UUID PK, rule_id FK, started_at, ended_at, duration_s INT,
+  would_drop INT, would_drop_model_agree INT, would_drop_model_disagree INT,
+  model_block_not_matched INT, passed BOOLEAN, criterion JSONB
+
+6.6 rule_provenance  [SRC step 7]
+  rule_id FK, ledger_seq BIGINT FK ledger_entries, decision_id FK,
+  PRIMARY KEY(rule_id, ledger_seq)
+
+6.7 rule_set_versions  (what goes into PCR)
+  ruleset_id UUID PK, created_at, active_index SMALLINT (0/1 = A/B array),
+  rule_ids UUID[], ruleset_sha256 TEXT, pcr_extended BOOLEAN,
+  swap_latency_us INT [MEASURED]
+
+6.8 rollback_events
+  id BIGSERIAL, rule_id FK, triggered_at, fp_indicator REAL, limit REAL,
+  window TSTZRANGE, auto BOOLEAN, by_user UUID NULL
+
+6.9 replay_buffer_index
+  id BIGSERIAL, window TSTZRANGE, parquet_path TEXT, n_rows INT,
+  label_mix JSONB  -- real recent traffic used for distillation/fidelity
+
+------------------------------------------------------------------------------
+7. LEDGER & ATTESTATION (Invention 4)  - APPEND-ONLY
+------------------------------------------------------------------------------
+7.1 ledger_entries
+  seq           BIGINT PK (gapless, assigned by single writer)
+  decision_id   BIGINT FK decisions UNIQUE
+  payload       JSONB  -- canonical: {flow_id, feature_hash, model_set_id,
+                       --  decision, conformal_set, ecs, topk_groups,
+                       --  rule_id, timestamp}  [SRC field list]
+  payload_canon BYTEA  -- exact canonical bytes (RFC 8785 JCS) [PROPOSED]
+  prev_hash     BYTEA  -- 32 bytes; genesis = 32 zero bytes
+  entry_hash    BYTEA  -- SHA-256(prev_hash || payload_canon)
+  batch_id      UUID FK merkle_batches NULL
+  appended_at   TIMESTAMPTZ
+  TRIGGER ledger_no_update: BEFORE UPDATE OR DELETE -> RAISE EXCEPTION.
+  GRANT: app role has INSERT, SELECT only.
+
+7.2 merkle_batches
+  batch_id      UUID PK
+  first_seq     BIGINT, last_seq BIGINT
+  merkle_root   BYTEA
+  signature     BYTEA   -- Ed25519 over (root || first_seq || last_seq ||
+                        --  prev_batch_root || pcr_digest)
+  key_id        TEXT
+  prev_batch_id UUID FK NULL
+  tpm_quote     BYTEA   -- TPMS_ATTEST blob
+  tpm_quote_sig BYTEA
+  pcr_index     SMALLINT
+  pcr_value     BYTEA
+  model_set_id  FK, ruleset_id FK, config_id FK
+  signed_at     TIMESTAMPTZ
+  (append-only trigger as above)
+
+7.3 pcr_events  (measurement log, like a TPM event log)
+  id BIGSERIAL, pcr_index SMALLINT, digest BYTEA, what TEXT
+  ('MODEL','RULESET','CONFIG'), ref_id TEXT, extended_at TIMESTAMPTZ,
+  pcr_after BYTEA
+  Lets the verifier replay extends and compare with the quoted PCR value.
+
+7.4 signing_keys
+  key_id TEXT PK, algo TEXT ('ED25519'), public_key BYTEA,
+  tpm_sealed BOOLEAN, tpm_handle TEXT, environment TEXT ('SWTPM','HW_TPM'),
+  created_at, retired_at
+  (private key NEVER stored in DB.)
+
+7.5 verification_runs
+  id BIGSERIAL, run_at, range_first BIGINT, range_last BIGINT,
+  ok BOOLEAN, first_bad_seq BIGINT NULL, failure_kind TEXT
+  ('EDIT','DELETE','REORDER','SIG','QUOTE','PCR'), duration_ms INT,
+  report JSONB
+
+------------------------------------------------------------------------------
+8. REVIEW QUEUE, LABELS, DRIFT
+------------------------------------------------------------------------------
+8.1 review_tickets
+  ticket_id UUID PK, decision_id FK, flow_id FK, opened_at, status
+  ticket_status, priority SMALLINT, assigned_to UUID FK users NULL,
+  reason TEXT (decision_reason), adversarial BOOLEAN,
+  verdict_class SMALLINT FK NULL, verdict_action decision_action NULL,
+  notes TEXT, resolved_at, resolved_by UUID FK
+8.2 labels  (delayed ground truth -> ACI err_t + retraining)
+  label_id BIGSERIAL, flow_id FK, class_id FK, source label_source,
+  confidence REAL, observed_at, ingested_at, ticket_id FK NULL
+8.3 drift_events
+  id BIGSERIAL, stream TEXT ('SCORE','GROUP:G1'...), detector TEXT
+  ('ADWIN'), delta REAL, detected_at, action_taken TEXT
+  ('RECALIBRATE','RETRAIN_QUEUED','NONE'), cal_id FK NULL
+8.4 retrain_jobs
+  job_id UUID PK, reason TEXT, requested_at, started_at, finished_at,
+  status TEXT, run_id FK experiment_runs NULL, new_model_set_id FK NULL
+
+------------------------------------------------------------------------------
+9. EXPERIMENTS & EVIDENCE (E1-E6, P1-P5)
+------------------------------------------------------------------------------
+9.1 datasets
+  dataset_id TEXT PK ('CICIDS2017_CORR','CSECICIDS2018','UNSW_NB15',
+  'TON_IOT','BOT_IOT','CICDDOS2019','NF_UQ_NIDS_V2','LAB'),
+  version TEXT, source_url TEXT, license_note TEXT, local_path TEXT,
+  granularity TEXT ('FLOW','PACKET_SEQ','FLOW_SEQ')
+9.2 splits
+  split_id UUID PK, dataset_id FK, kind TEXT ('TEMPORAL','CROSS_DATASET'),
+  train_window TEXT, val_window TEXT, test_window TEXT,
+  dedup BOOLEAN, n_train INT, n_val INT, n_test INT, manifest_path TEXT
+9.3 experiment_runs
+  run_id UUID PK, experiment TEXT ('P1'..'P5','E1'..'E6','ABLATION_*',
+  'BASELINE_*'), split_id FK, model_family, seed INT, config_sha256 TEXT,
+  git_commit TEXT, started_at, finished_at, env JSONB (WSL2 kernel, CPU,
+  RAM, enforcement_path), metrics JSONB [MEASURED], artifacts_path TEXT,
+  notes TEXT
+9.4 attack_runs  (lab traffic with labels known by construction)
+  attack_run_id UUID PK, scenario TEXT ('NMAP_SCAN','SYN_FLOOD',
+  'HYDRA_BRUTE','SLOWHTTPTEST','LOW_AND_SLOW','EXPLAINER_MANIPULATION',
+  'BENIGN_CURL','BENIGN_IPERF',...), tool_cmd TEXT, started_at, ended_at,
+  src_container TEXT, class_id FK, triggered_by UUID FK users NULL
+9.5 human_study_sessions
+  session_id UUID PK, participant_code TEXT (pseudonymous), condition TEXT
+  ('WITH_EXPL','WITHOUT_EXPL'), task_id TEXT, decision TEXT, correct
+  BOOLEAN, time_ms INT, at TIMESTAMPTZ
+9.6 export_bundles
+  bundle_id UUID PK, created_by FK users, created_at, filter JSONB,
+  ledger_range INT8RANGE, file_path TEXT, sha256 TEXT, signature BYTEA
+9.7 invention_log [PROPOSED - can also live as a signed markdown file]
+  id SERIAL, logged_at, author TEXT, invention SMALLINT (1..5), summary
+  TEXT, commit_hash TEXT, evidence_run_id FK NULL
+
+------------------------------------------------------------------------------
+10. REDIS STREAMS [SRC: "redis - decision/event stream"]  [names PROPOSED]
+------------------------------------------------------------------------------
+  gw:decisions   XADD per decision {decision_id, flow_key, action, ecs,
+                 conformal_set, adversarial, checkpoint, ts} -> API -> WS
+  gw:flows       periodic flow summaries for the live table
+  gw:rules       rule lifecycle events {rule_id, status, ts}
+  gw:alerts      adversarial flags, drift events, rollbacks, ledger failures
+  gw:narrate     jobs for narrator worker {decision_id}
+  gw:labels      incoming verdicts/labels -> ACI updater
+  MAXLEN ~ configurable (trimmed); Postgres is the durable copy.
+
+------------------------------------------------------------------------------
+11. KERNEL BPF MAPS (enforcement table + counters) [SRC section 6]
+------------------------------------------------------------------------------
+  Name              Type                Key                     Value
+  flow_verdict      LRU_HASH            5-tuple                 {action, rate_pps,
+                                                                 burst, expires_ns}
+  src_verdict       LRU_HASH            src IPv4                {action, rate_pps,
+                                                                 burst, expires_ns}
+  prefix_list       LPM_TRIE            {prefixlen, ipv4}       {action: allow/deny}
+  safety_allow      HASH                {proto, port} / cidr    {flag}  (checked FIRST)
+  rules_a, rules_b  ARRAY[MAX_RULES]    slot                    {n_pred, preds[...],
+                                                                 action, mode(enforce|
+                                                                 log_only), rule_tag,
+                                                                 expires_ns}
+  rules_active      ARRAY[1]            0                       {active_index 0/1}
+  token_bucket      LRU_HASH            {key_type, key}         {tokens, last_ns}
+  flow_stats        LRU_HASH            5-tuple                 {pkts, bytes, syn, ack,
+                                                                 fin, rst, first_ns,
+                                                                 last_ns, emitted_cnt}
+  src_stats         LRU_HASH            src IPv4                {syn_cnt, pkts, bytes,
+                                                                 window_start_ns,
+                                                                 port_bitmap/bloom,
+                                                                 host_sketch}
+  canary_counters   PERCPU_ARRAY        slot                    {would_drop, matched}
+  events            RINGBUF             -                       packet_record /
+                                                                 flow_summary
+  packet_record = {flow 5-tuple, pkt_index, size, direction, tcp_flags,
+                   delta_t_ns, ts_ns}
+  MAX_RULES, map sizes, window lengths: compile-time constants injected from
+  config at build (not literals scattered in code).
+  Predicate features available in kernel = exactly the features rows with
+  kernel_realizable=true; the agent publishes this list at startup and the
+  brain checks it (single source of truth).
+
+------------------------------------------------------------------------------
+12. FILE STORES (Parquet)
+------------------------------------------------------------------------------
+  data/raw/<dataset>/...           (downloaded; PCAP deleted after extraction)
+  data/processed/<dataset>/flows.parquet
+  data/processed/<dataset>/sequences.parquet  (flow_key, label, N x channels)
+  data/splits/<split_id>/{train,val,test}.parquet
+  data/replay/<window>.parquet     (recent real traffic for rule compiler)
+  models/<model_id>/...            (sha256 recorded in model_artifacts)
+  evidence/<run_id>/               (raw logs, plots, tables for patent spec)
+
+------------------------------------------------------------------------------
+13. KEY QUERIES / VIEWS
+------------------------------------------------------------------------------
+  v_live_flows       latest decision per flow in last N minutes + ECS + set
+  v_review_queue     open tickets joined with decision + top-3 groups
+  v_rule_studio      rules + latest cert + latest canary + provenance count
+  v_audit_decisions  decisions + ledger seq + batch + signed_at
+  v_e1_table         per run: FPR@recall gated vs ungated
+  v_coverage_stream  aci_state history joined with labels (E2 plot)
+==============================================================================
+END SCHEMA
+==============================================================================
