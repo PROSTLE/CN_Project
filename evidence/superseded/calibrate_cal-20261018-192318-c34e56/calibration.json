@@ -1,0 +1,386 @@
+{
+  "run_id": "cal-20261018-192318-c34e56",
+  "model_set_id": "ms-20261018-191642-bafa7f",
+  "values": {
+    "ecs": {
+      "k": 5,
+      "alpha": 0.5
+    },
+    "decision": {
+      "tau_lo": 0.6567460317460316,
+      "tau_hi": 0.8055555555555555
+    },
+    "rules": {
+      "min_agreement": 0.9991666666666666,
+      "max_fpr": 0.01
+    },
+    "conformal": {
+      "file": "/var/lib/glasswall/models/ms-20261018-191642-bafa7f/conformal.json",
+      "sha256": "8d68d665b17c0cfedb1ae4fcd05166adc03189710e406e1bf3c8a21a440a9fe5",
+      "alpha_target": 0.05
+    },
+    "model_set_id": "ms-20261018-191642-bafa7f"
+  },
+  "ecs_grid": [
+    {
+      "k": 2,
+      "alpha": 0.0,
+      "auc_correct_vs_wrong": 0.9461724482988659,
+      "mean_ecs_correct": 0.8415054480764953,
+      "mean_ecs_wrong": 0.25
+    },
+    {
+      "k": 2,
+      "alpha": 0.25,
+      "auc_correct_vs_wrong": 0.9361240827218146,
+      "mean_ecs_correct": 0.7247146245645245,
+      "mean_ecs_wrong": 0.23611111111111113
+    },
+    {
+      "k": 2,
+      "alpha": 0.5,
+      "auc_correct_vs_wrong": 0.9125041694462974,
+      "mean_ecs_correct": 0.6079238010525536,
+      "mean_ecs_wrong": 0.2222222222222222
+    },
+    {
+      "k": 2,
+      "alpha": 0.75,
+      "auc_correct_vs_wrong": 0.8402059706470981,
+      "mean_ecs_correct": 0.49113297754058255,
+      "mean_ecs_wrong": 0.20833333333333331
+    },
+    {
+      "k": 2,
+      "alpha": 1.0,
+      "auc_correct_vs_wrong": 0.7637591727818546,
+      "mean_ecs_correct": 0.3743421540286117,
+      "mean_ecs_wrong": 0.19444444444444442
+    },
+    {
+      "k": 3,
+      "alpha": 0.0,
+      "auc_correct_vs_wrong": 0.8733739159439626,
+      "mean_ecs_correct": 0.9968034245052259,
+      "mean_ecs_wrong": 0.5
+    },
+    {
+      "k": 3,
+      "alpha": 0.25,
+      "auc_correct_vs_wrong": 0.904540527018012,
+      "mean_ecs_correct": 0.8738158772515009,
+      "mean_ecs_wrong": 0.45208333333333334
+    },
+    {
+      "k": 3,
+      "alpha": 0.5,
+      "auc_correct_vs_wrong": 0.9046447631754503,
+      "mean_ecs_correct": 0.7508283299977764,
+      "mean_ecs_wrong": 0.4041666666666667
+    },
+    {
+      "k": 3,
+      "alpha": 0.75,
+      "auc_correct_vs_wrong": 0.9036232488325551,
+      "mean_ecs_correct": 0.6278407827440515,
+      "mean_ecs_wrong": 0.35625
+    },
+    {
+      "k": 3,
+      "alpha": 1.0,
+      "auc_correct_vs_wrong": 0.8826717811874584,
+      "mean_ecs_correct": 0.5048532354903269,
+      "mean_ecs_wrong": 0.30833333333333335
+    },
+    {
+      "k": 4,
+      "alpha": 0.0,
+      "auc_correct_vs_wrong": 0.8477943629086058,
+      "mean_ecs_correct": 0.9867087317470906,
+      "mean_ecs_wrong": 0.7638888888888888
+    },
+    {
+      "k": 4,
+      "alpha": 0.25,
+      "auc_correct_vs_wrong": 0.9236365910607072,
+      "mean_ecs_correct": 0.8918486332157948,
+      "mean_ecs_wrong": 0.6745039682539682
+    },
+    {
+      "k": 4,
+      "alpha": 0.5,
+      "auc_correct_vs_wrong": 0.9250750500333556,
+      "mean_ecs_correct": 0.7969885346844987,
+      "mean_ecs_wrong": 0.5851190476190476
+    },
+    {
+      "k": 4,
+      "alpha": 0.75,
+      "auc_correct_vs_wrong": 0.9271597731821214,
+      "mean_ecs_correct": 0.7021284361532026,
+      "mean_ecs_wrong": 0.495734126984127
+    },
+    {
+      "k": 4,
+      "alpha": 1.0,
+      "auc_correct_vs_wrong": 0.8944087725150099,
+      "mean_ecs_correct": 0.6072683376219067,
+      "mean_ecs_wrong": 0.40634920634920635
+    },
+    {
+      "k": 5,
+      "alpha": 0.0,
+      "auc_correct_vs_wrong": 0.8284272848565711,
+      "mean_ecs_correct": 0.9693425246460602,
+      "mean_ecs_wrong": 0.7847222222222222
+    },
+    {
+      "k": 5,
+      "alpha": 0.25,
+      "auc_correct_vs_wrong": 0.9187374916611073,
+      "mean_ecs_correct": 0.9119868602878108,
+      "mean_ecs_wrong": 0.716765873015873
+    },
+    {
+      "k": 5,
+      "alpha": 0.5,
+      "auc_correct_vs_wrong": 0.947631754503002,
+      "mean_ecs_correct": 0.8546311959295615,
+      "mean_ecs_wrong": 0.6488095238095237
+    },
+    {
+      "k": 5,
+      "alpha": 0.75,
+      "auc_correct_vs_wrong": 0.9361032354903269,
+      "mean_ecs_correct": 0.797275531571312,
+      "mean_ecs_wrong": 0.5808531746031746
+    },
+    {
+      "k": 5,
+      "alpha": 1.0,
+      "auc_correct_vs_wrong": 0.9121914609739827,
+      "mean_ecs_correct": 0.7399198672130626,
+      "mean_ecs_wrong": 0.5128968253968254
+    }
+  ],
+  "tau_hi_table": [
+    {
+      "tau_hi": 0.6567460317460317,
+      "benign_block_rate": 0.03199174406604747,
+      "attack_block_rate": 0.9920492943748758
+    },
+    {
+      "tau_hi": 0.6587301587301587,
+      "benign_block_rate": 0.03199174406604747,
+      "attack_block_rate": 0.9914529914529915
+    },
+    {
+      "tau_hi": 0.6613756613756614,
+      "benign_block_rate": 0.03199174406604747,
+      "attack_block_rate": 0.9900616179685947
+    },
+    {
+      "tau_hi": 0.665079365079365,
+      "benign_block_rate": 0.03199174406604747,
+      "attack_block_rate": 0.9900616179685947
+    },
+    {
+      "tau_hi": 0.6686507936507936,
+      "benign_block_rate": 0.03199174406604747,
+      "attack_block_rate": 0.9900616179685947
+    },
+    {
+      "tau_hi": 0.6712962962962963,
+      "benign_block_rate": 0.03199174406604747,
+      "attack_block_rate": 0.9900616179685947
+    },
+    {
+      "tau_hi": 0.6825396825396824,
+      "benign_block_rate": 0.03199174406604747,
+      "attack_block_rate": 0.9900616179685947
+    },
+    {
+      "tau_hi": 0.6845238095238096,
+      "benign_block_rate": 0.03199174406604747,
+      "attack_block_rate": 0.9880739415623137
+    },
+    {
+      "tau_hi": 0.6944444444444443,
+      "benign_block_rate": 0.03199174406604747,
+      "attack_block_rate": 0.9872788709998013
+    },
+    {
+      "tau_hi": 0.6964285714285713,
+      "benign_block_rate": 0.03199174406604747,
+      "attack_block_rate": 0.9872788709998013
+    },
+    {
+      "tau_hi": 0.6964285714285715,
+      "benign_block_rate": 0.03199174406604747,
+      "attack_block_rate": 0.9856887298747764
+    },
+    {
+      "tau_hi": 0.6984126984126983,
+      "benign_block_rate": 0.03199174406604747,
+      "attack_block_rate": 0.9856887298747764
+    },
+    {
+      "tau_hi": 0.6984126984126985,
+      "benign_block_rate": 0.030959752321981424,
+      "attack_block_rate": 0.9842973563903796
+    },
+    {
+      "tau_hi": 0.7037037037037037,
+      "benign_block_rate": 0.029927760577915376,
+      "attack_block_rate": 0.9842973563903796
+    },
+    {
+      "tau_hi": 0.7083333333333334,
+      "benign_block_rate": 0.029927760577915376,
+      "attack_block_rate": 0.9842973563903796
+    },
+    {
+      "tau_hi": 0.7103174603174601,
+      "benign_block_rate": 0.029927760577915376,
+      "attack_block_rate": 0.9805207712184456
+    },
+    {
+      "tau_hi": 0.7123015873015873,
+      "benign_block_rate": 0.029927760577915376,
+      "attack_block_rate": 0.9803220035778175
+    },
+    {
+      "tau_hi": 0.7142857142857143,
+      "benign_block_rate": 0.029927760577915376,
+      "attack_block_rate": 0.9723712979526933
+    },
+    {
+      "tau_hi": 0.7166666666666667,
+      "benign_block_rate": 0.029927760577915376,
+      "attack_block_rate": 0.9713774597495528
+    },
+    {
+      "tau_hi": 0.7206349206349206,
+      "benign_block_rate": 0.029927760577915376,
+      "attack_block_rate": 0.9711786921089247
+    },
+    {
+      "tau_hi": 0.7222222222222222,
+      "benign_block_rate": 0.029927760577915376,
+      "attack_block_rate": 0.9709799244682965
+    },
+    {
+      "tau_hi": 0.7242063492063492,
+      "benign_block_rate": 0.029927760577915376,
+      "attack_block_rate": 0.9709799244682965
+    },
+    {
+      "tau_hi": 0.7305555555555555,
+      "benign_block_rate": 0.02889576883384933,
+      "attack_block_rate": 0.9664082687338501
+    },
+    {
+      "tau_hi": 0.75,
+      "benign_block_rate": 0.02889576883384933,
+      "attack_block_rate": 0.9664082687338501
+    },
+    {
+      "tau_hi": 0.7519841269841269,
+      "benign_block_rate": 0.02889576883384933,
+      "attack_block_rate": 0.9495130192804612
+    },
+    {
+      "tau_hi": 0.751984126984127,
+      "benign_block_rate": 0.026831785345717233,
+      "attack_block_rate": 0.9483204134366925
+    },
+    {
+      "tau_hi": 0.753968253968254,
+      "benign_block_rate": 0.02063983488132095,
+      "attack_block_rate": 0.9469290399522957
+    },
+    {
+      "tau_hi": 0.7761904761904762,
+      "benign_block_rate": 0.0196078431372549,
+      "attack_block_rate": 0.8767640628105744
+    },
+    {
+      "tau_hi": 0.7805555555555556,
+      "benign_block_rate": 0.0196078431372549,
+      "attack_block_rate": 0.8767640628105744
+    },
+    {
+      "tau_hi": 0.7916666666666666,
+      "benign_block_rate": 0.0196078431372549,
+      "attack_block_rate": 0.8757702246074339
+    },
+    {
+      "tau_hi": 0.7936507936507935,
+      "benign_block_rate": 0.014447884416924664,
+      "attack_block_rate": 0.7716159809183065
+    },
+    {
+      "tau_hi": 0.7936507936507936,
+      "benign_block_rate": 0.01238390092879257,
+      "attack_block_rate": 0.7658517193400914
+    },
+    {
+      "tau_hi": 0.8055555555555555,
+      "benign_block_rate": 0.009287925696594427,
+      "attack_block_rate": 0.7507453786523554
+    },
+    {
+      "tau_hi": 0.8095238095238096,
+      "benign_block_rate": 0.007223942208462332,
+      "attack_block_rate": 0.7064201947922878
+    },
+    {
+      "tau_hi": 0.8138888888888888,
+      "benign_block_rate": 0.007223942208462332,
+      "attack_block_rate": 0.6754124428543034
+    },
+    {
+      "tau_hi": 0.8333333333333334,
+      "benign_block_rate": 0.007223942208462332,
+      "attack_block_rate": 0.6708407871198568
+    },
+    {
+      "tau_hi": 0.8555555555555555,
+      "benign_block_rate": 0.007223942208462332,
+      "attack_block_rate": 0.5344861856489763
+    },
+    {
+      "tau_hi": 0.8888888888888888,
+      "benign_block_rate": 0.007223942208462332,
+      "attack_block_rate": 0.5324985092426953
+    },
+    {
+      "tau_hi": 0.9333333333333332,
+      "benign_block_rate": 0.0,
+      "attack_block_rate": 0.25501888292585967
+    },
+    {
+      "tau_hi": 1.0,
+      "benign_block_rate": 0.0,
+      "attack_block_rate": 0.2546213476446035
+    }
+  ],
+  "val_n": 6000,
+  "val_wrong": 4,
+  "val_conformal_coverage_at_target": 0.9561666666666667,
+  "val_set_size_hist": [
+    0,
+    277,
+    5723,
+    0,
+    0,
+    0
+  ],
+  "cal_n_per_class": {
+    "Benign": 1069,
+    "DoS": 898,
+    "PortScan": 443,
+    "BruteForce": 10,
+    "WebAttack": 3580
+  }
+}
