@@ -1,0 +1,108 @@
+# Allow-listed lab traffic catalogue. Nothing outside this file is ever run by
+# lab/scenarios.py or the demo control endpoint. Labels are known by
+# construction: every run is recorded in attack_runs with its source, class
+# and monotonic start/end time (same clock as bpf_ktime_get_ns).
+#
+# Template variables: {victim} {http_port} {ssh_port} {lab_user} {run_dir}
+#                     {root} {py} {duration} {seed}
+# label: how flows are attributed to the run
+#   source  - flows whose client ip is the run's namespace ip
+#   spoofed - flows whose client ip is not a lab host (random-source floods)
+
+lab_user: labuser
+ssh_port: 22
+label_grace_s: 2.0          # flows starting this long after a run ends still belong to it
+
+benign_mix:                 # background generator (lab/gen/benign_mix.py)
+  workers: 8                # parallel independent users per generator process
+  think_mean_s: 0.6
+  weights: {web: 6, wget: 2, ssh: 2, iperf_tcp: 1, iperf_udp: 1, ping: 1}
+  iperf_seconds: 2
+  iperf_tcp_rate: 20M
+  iperf_udp_rate: 2M
+
+scenarios:
+  benign_attacker:
+    class: Benign
+    ns: attacker
+    label: source
+    duration: 25
+    cmd: "{py} {root}/lab/gen/benign_mix.py --target {victim} --duration {duration} --seed {seed}"
+  portscan_syn:
+    class: PortScan
+    ns: attacker
+    label: source
+    duration: 15
+    cmd: "nmap -sS -T4 -p 1-1000 -n --max-retries 1 {victim}"
+  portscan_connect:
+    class: PortScan
+    ns: attacker
+    label: source
+    duration: 15
+    cmd: "nmap -sT -T4 -p 1-1000 -n --max-retries 1 {victim}"
+  dos_synflood:
+    class: DoS
+    ns: attacker
+    label: source
+    duration: 8
+    cmd: "hping3 -S -p {http_port} -i u2000 {victim}"
+  dos_slowloris:
+    class: DoS
+    ns: attacker
+    label: source
+    duration: 25
+    cmd: "slowhttptest -H -c 150 -r 50 -i 5 -l {duration} -u http://{victim}:{http_port}/ -x 24 -p 3"
+  ddos_spoofed:
+    class: DDoS
+    ns: attacker
+    label: spoofed
+    duration: 6
+    cmd: "hping3 -S -p {http_port} -i u3000 --rand-source {victim}"
+  bruteforce_ssh:
+    class: BruteForce
+    ns: attacker
+    label: source
+    duration: 25
+    cmd: "hydra -I -l {lab_user} -P {run_dir}/wordlist.txt -t 16 -f ssh://{victim}:{ssh_port}"
+  webattack_enum:
+    class: WebAttack
+    ns: attacker
+    label: source
+    duration: 15
+    cmd: "{py} {root}/lab/gen/web_enum.py --target {victim} --port {http_port} --duration {duration} --seed {seed}"
+
+  # Evasion variants: never used for training; only for E6 / demo D3.
+  bruteforce_lowslow:
+    class: BruteForce
+    ns: attacker
+    label: source
+    duration: 40
+    evasion: true
+    cmd: "hydra -I -l {lab_user} -P {run_dir}/wordlist.txt -t 1 -c 4 ssh://{victim}:{ssh_port}"
+  dos_padded:
+    class: DoS
+    ns: attacker
+    label: source
+    duration: 8
+    evasion: true
+    cmd: "hping3 -S -p {http_port} -i u3000 -d 600 {victim}"
+  portscan_slow:
+    class: PortScan
+    ns: attacker
+    label: source
+    duration: 40
+    evasion: true
+    cmd: "nmap -sS -T2 -p 1-120 -n --max-retries 0 {victim}"
+
+schedules:
+  # capture used for train/val/test (temporal split over the whole session)
+  train:
+    rounds: 5
+    gap_s: 3
+    scenarios: [benign_attacker, portscan_syn, portscan_connect, dos_synflood, dos_slowloris,
+                ddos_spoofed, bruteforce_ssh, webattack_enum]
+  # evasion capture (E6), recorded separately
+  evasion:
+    rounds: 2
+    gap_s: 3
+    scenarios: [benign_attacker, bruteforce_lowslow, dos_padded, portscan_slow]
