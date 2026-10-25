@@ -1,0 +1,79 @@
+# Semantic feature groups (ideation section 2) and every model input.
+# kernel: true  => the XDP datapath computes exactly this value (feature id
+#                  is shared with datapath/bpf/glasswall_common.h) and the
+#                  rule compiler may use it.
+groups:
+  G1: TCP-flag behaviour
+  G2: Packet-size distribution
+  G3: Inter-arrival timing
+  G4: Rate (pps/bps)
+  G5: Port fan-out
+  G6: Host fan-out
+  G7: Payload-independent length stats
+  G8: Connection state
+  G9: Direction/asymmetry
+  G10: Source history
+  G11: Threat-intel / reputation
+  G12: Flow duration/lifecycle
+  G13: Protocol mix
+  G14: List membership
+
+flow_features:
+  - {name: f_syn_ratio, group: G1}
+  - {name: f_ack_ratio, group: G1}
+  - {name: f_fin_ratio, group: G1}
+  - {name: f_rst_ratio, group: G1}
+  - {name: f_psh_ratio, group: G1}
+  - {name: f_size_mean, group: G2}
+  - {name: f_size_std, group: G2}
+  - {name: f_size_max, group: G2}
+  - {name: f_size_min, group: G2}
+  - {name: f_iat_mean, group: G3}
+  - {name: f_iat_std, group: G3}
+  - {name: f_iat_max, group: G3}
+  - {name: f_iat_min, group: G3}
+  - {name: f_pps, group: G4}
+  - {name: f_bps, group: G4}
+  - {name: f_fwd_len_mean, group: G7}
+  - {name: f_bwd_len_mean, group: G7}
+  - {name: f_first_len, group: G7}
+  - {name: f_handshake, group: G8}
+  - {name: f_has_reply, group: G8}
+  - {name: f_ended, group: G8}
+  - {name: f_fwd_pkt_ratio, group: G9}
+  - {name: f_byte_asym, group: G9}
+  - {name: f_duration, group: G12}
+  - {name: f_n_pkts, group: G12}
+  - {name: f_proto_tcp, group: G13}
+  - {name: f_proto_udp, group: G13}
+  - {name: f_proto_icmp, group: G13}
+
+kernel_features:      # id must match enum gw_feat in glasswall_common.h
+  - {name: k_src_pkts, group: G4, id: 0}
+  - {name: k_src_syn_ratio_pm, group: G1, id: 1}
+  - {name: k_src_rst_ratio_pm, group: G1, id: 2}
+  - {name: k_src_mean_size, group: G2, id: 3}
+  - {name: k_src_dports, group: G5, id: 4}
+  - {name: k_src_dsts, group: G6, id: 5}
+  - {name: k_src_pps, group: G4, id: 6}
+  - {name: k_src_syn_count, group: G1, id: 7}
+
+context_features:
+  - {name: h_flows_1m, group: G10}
+  - {name: h_flows_10m, group: G10}
+  - {name: h_flows_1h, group: G10}
+  - {name: h_dports_1m, group: G10}
+  - {name: h_noreply_ratio_1m, group: G10}
+  - {name: t_reputation, group: G11}
+  - {name: l_blacklisted, group: G14}
+  - {name: l_whitelisted, group: G14}
+
+sequence_channels:    # CfC per-packet inputs
+  - {name: s_size, group: G2}
+  - {name: s_dir, group: G9}
+  - {name: s_syn, group: G1}
+  - {name: s_ack, group: G1}
+  - {name: s_fin, group: G1}
+  - {name: s_rst, group: G1}
+  - {name: s_psh, group: G1}
+  - {name: s_dt, group: G3}
