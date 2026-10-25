@@ -1,0 +1,60 @@
+{
+  "evasion": {
+    "benign_attacker": {
+      "n": 677,
+      "gated_intercept": 0.023633677991137372,
+      "gated_adversarial_R1": 0.0014771048744460858,
+      "conformal_only_intercept": 0.022156573116691284,
+      "argmax_block": 0.0,
+      "mean_ecs": 0.9406696208764155
+    },
+    "benign_client": {
+      "n": 3301,
+      "gated_intercept": 0.0018176310209027568,
+      "gated_adversarial_R1": 0.0,
+      "conformal_only_intercept": 0.0018176310209027568,
+      "argmax_block": 0.0009088155104513784,
+      "mean_ecs": 0.9772796122387155
+    },
+    "bruteforce_lowslow": {
+      "n": 8,
+      "gated_intercept": 0.5,
+      "gated_adversarial_R1": 0.0,
+      "conformal_only_intercept": 0.5,
+      "argmax_block": 0.25,
+      "mean_ecs": 0.7291666666666667
+    },
+    "dos_padded": {
+      "n": 1939,
+      "gated_intercept": 1.0,
+      "gated_adversarial_R1": 0.021660649819494584,
+      "conformal_only_intercept": 1.0,
+      "argmax_block": 0.9979370809695719,
+      "mean_ecs": 0.3262850266460375
+    },
+    "portscan_slow": {
+      "n": 75,
+      "gated_intercept": 1.0,
+      "gated_adversarial_R1": 0.0,
+      "conformal_only_intercept": 1.0,
+      "argmax_block": 1.0,
+      "mean_ecs": 0.9733333333333334
+    }
+  },
+  "scaffolding": {
+    "n": 60,
+    "n_calibration_val": 60,
+    "innocuous_feature": "f_has_reply",
+    "ood_accuracy": 1.0,
+    "learned_threshold": 0.0,
+    "threshold_tau_lo": 0.3333333333333333,
+    "honest_flag_rate_learned": 0.0,
+    "scaffold_flag_rate_learned": 0.0,
+    "honest_flag_rate": 0.35,
+    "scaffold_flag_rate": 0.7833333333333333,
+    "honest_mean_agreement": 0.3361111111111111,
+    "scaffold_mean_agreement": 0.11666666666666667,
+    "honest_innocuous_topk": 0.0,
+    "scaffold_innocuous_topk": 0.9833333333333333
+  }
+}
