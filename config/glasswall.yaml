@@ -1,0 +1,180 @@
+# GLASSWALL single source of configuration.
+# Keys marked LEARNED are null here on purpose: they are fitted on validation
+# data by `glasswall calibrate` and stored (with the producing run id) in the
+# config_versions table. The engine refuses to decide while any is missing.
+
+environment:
+  label: "WSL2 lab (network namespaces, xdpgeneric on veth)"
+  tpm_label: "swtpm (software TPM 2.0) - demo, not hardware TPM"
+
+paths:
+  state_dir: /var/lib/glasswall          # Linux FS (SQLite does not like 9p)
+  run_dir: /run/glasswall
+  db_file: /var/lib/glasswall/glasswall.db
+  capture_dir: /var/lib/glasswall/capture
+  models_dir: /var/lib/glasswall/models
+  replay_dir: /var/lib/glasswall/replay
+  tpm_dir: /var/lib/glasswall/tpm
+  evidence_dir: /mnt/c/Lang/CN/evidence
+
+lab:
+  namespaces:
+    gateway: gwgw
+    attacker: gwatt
+    client: gwcli
+    victim: gwvic
+  links:            # gateway-side iface, host ns, host ip/cidr, gateway ip
+    - {gw_if: v-att, ns: gwatt, host_ip: 10.10.1.2/24, gw_ip: 10.10.1.1/24}
+    - {gw_if: v-cli, ns: gwcli, host_ip: 10.10.2.2/24, gw_ip: 10.10.2.1/24}
+    - {gw_if: v-vic, ns: gwvic, host_ip: 10.10.9.2/24, gw_ip: 10.10.9.1/24}
+  server_iface: v-vic
+  victim_ip: 10.10.9.2
+  attacker_ip: 10.10.1.2
+  client_ip: 10.10.2.2
+  http_port: 80
+  ssh_ports: [22, 2222]
+
+datapath:
+  # compile-time sizes -> datapath/bpf/config_gen.h (generated)
+  max_rules: 32
+  max_pred: 4
+  port_bitmap_words: 16      # 1024-bit hashed dst-port bitmap
+  host_bitmap_words: 4       # 256-bit hashed dst-host bitmap
+  flow_map_entries: 65536
+  src_map_entries: 16384
+  verdict_map_entries: 65536
+  ringbuf_bytes: 16777216
+  # runtime
+  seq_len_n: 32
+  src_window_ns: 10000000000         # per-source rolling window (10 s)
+  pps_min_elapsed_ns: 1000000000     # pps denominator floor
+  reaper_interval_ms: 2000
+  enforcement_preference: [xdp_generic, tc]
+  events_socket: /run/glasswall/dp_events.sock
+  ctl_socket: /run/glasswall/dp_ctl.sock
+
+safety_allowlist:
+  # Management traffic that may never be dropped by any verdict or rule.
+  ports: [2222]
+  ips: []
+
+classes:            # order defines class ids
+  - {name: Benign, attack: false}
+  - {name: DoS, attack: true}
+  - {name: DDoS, attack: true}
+  - {name: PortScan, attack: true}
+  - {name: BruteForce, attack: true}
+  - {name: Botnet, attack: true}
+  - {name: WebAttack, attack: true}
+  - {name: Infiltration, attack: true}
+
+features:
+  file: config/features.yaml
+  checkpoints: [8, 16, 32]           # + flow end
+  flow_idle_timeout_s: 3.0
+  flow_end_linger_s: 0.5             # close a FIN/RST-ended flow after this quiet time
+  rate_min_duration_s: 0.001         # duration floor for pps/bps of very short flows
+  tick_ms: 200                       # event-time ticker that closes idle/ended flows
+  context_scan_cap: 2048            # max recent flows scanned for h_dports_1m / h_noreply_ratio_1m
+  history_windows_s: [60, 600, 3600]
+  threat_intel_file: null            # no feed configured -> G11 inactive
+  blacklist: []
+  whitelist: []
+
+models:
+  cfc_units: 24                      # AutoNCP neurons
+  cfc_epochs: 15
+  ig_steps: 16
+  gbdt_rounds: 300
+  gbdt_early_stop: 30
+  ebm_interactions: 0                # pairwise terms cost >10x training time on this CPU (measured); mains only
+  ebm_outer_bags: 4
+  seq_lr: 0.003
+  seq_batch: 256
+  seed: 7
+  split: {mode: rounds, test_rounds: 1, valcal_rounds: 1}             # temporal, by capture round
+  split_fractions: {train: 0.55, val: 0.15, cal: 0.10, test: 0.20}   # used only when split.mode = fraction
+  train_cap_per_class: 5000          # snapshots per class sampled into train (inside train fold)
+  eval_cap: 6000                     # max snapshots per split for attribution-based evaluation
+  fixed_recall: 0.95                 # report FPR at this attack recall
+  ensemble_weight_step: 0.1          # simplex grid for ensemble weights (fit on val)
+  temperature_grid: [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0]
+
+ecs:
+  k: null            # LEARNED
+  alpha: null        # LEARNED
+  k_grid: [2, 3, 4, 5]
+  alpha_grid: [0.0, 0.25, 0.5, 0.75, 1.0]
+
+conformal:
+  alpha_target: 0.05
+  aci_gamma: 0.005
+  mondrian: true
+
+decision:
+  tau_lo: null       # LEARNED
+  tau_hi: null       # LEARNED
+  fpr_budget: 0.01   # policy input used to learn tau_lo / tau_hi
+  policy: FAIL_OPEN_RATE_LIMIT     # or FAIL_CLOSED
+  block_ttl_s: 120
+  allow_ttl_s: 0     # 0 = do not write ALLOW entries to the kernel
+  block_scope: source              # source | flow
+
+quarantine:
+  rate_pps: 20
+  burst: 40
+  ttl_s: 120
+  # PROPOSED: rate-limit scope per decision-table row. Uncertain-set rows (R2 empty set,
+  # R3 benign+attack) affect only the flow; attack-leaning / adversarial rows the source.
+  scope_by_row: {R1: source, R2: flow, R3: flow, R6: source}
+
+rules:
+  trigger_interval_s: 20
+  min_cluster_flows: 30
+  window_s: 120
+  max_depth: 3
+  min_agreement: null   # LEARNED/policy - filled by calibrate
+  max_fpr: null         # LEARNED/policy - filled by calibrate
+  canary_seconds: 15
+  ttl_s: 600
+  rollback_fp_limit: 0.05
+  rollback_min_matches: 20
+
+ledger:
+  batch_size: 256
+  batch_max_seconds: 10
+  pcr_index: 16
+  tcti: "swtpm:host=127.0.0.1,port=2321"
+
+drift:
+  adwin_delta: 0.002
+
+adversarial:
+  background_n: 50           # background rows for KernelSHAP / LIME (offline only)
+  kernelshap_nsamples: 300
+  lime_samples: 1000
+  lipschitz_samples: 8
+  lipschitz_rel_eps: 0.02
+
+experiments:
+  e2_label_delay: 200       # decisions between a decision and its (delayed) label
+  e2_window: 500
+  e3_window: 2000           # replay-window size (val snapshots) per distilled candidate rule
+  e6_scaffold_n: 60
+  e6_lime_samples: 1000
+
+brain:
+  batch_wait_ms: 50          # max time to accumulate events before deciding
+  max_batch_events: 20000
+  max_batch_decisions: 512
+  idle_tick_s: 0.5           # close idle flows on wall clock when the stream is quiet
+  refresh_s: 30              # re-send an identical kernel verdict at most this often
+
+narrator:
+  endpoint: null           # e.g. http://127.0.0.1:11434 when Ollama+Qwen3 is installed
+  model: null
+  timeout_ms: 4000
+
+api:
+  host: 0.0.0.0
+  port: 8000
