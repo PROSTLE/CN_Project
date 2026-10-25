@@ -1,0 +1,616 @@
+{
+  "runs": [
+    {
+      "scenario": "portscan_syn",
+      "class": "PortScan",
+      "evasion": false,
+      "duration_s": 0.7313377857208252,
+      "decisions": 1003,
+      "by_action": {
+        "QUARANTINE": 4,
+        "BLOCK": 999
+      },
+      "intercept_share": 1.0,
+      "time_to_first_block_or_quarantine_s": 1.2733123302459717,
+      "adversarial_flags": 0,
+      "rule_hit_decisions": 0,
+      "mean_ecs": 0.9980059810568294,
+      "kernel_after": {
+        "total": 53367,
+        "pass": 53343,
+        "safety": 0,
+        "drop_flow": 0,
+        "drop_src": 0,
+        "drop_prefix": 0,
+        "drop_rule": 0,
+        "rate_drop": 0,
+        "rb_full": 0,
+        "emitted": 10384,
+        "non_ip": 24
+      },
+      "rule_hits_after": {}
+    },
+    {
+      "scenario": "bruteforce_ssh",
+      "class": "BruteForce",
+      "evasion": false,
+      "duration_s": 25.391740560531616,
+      "decisions": 3,
+      "by_action": {
+        "BLOCK": 3
+      },
+      "intercept_share": 1.0,
+      "time_to_first_block_or_quarantine_s": 0.8268990516662598,
+      "adversarial_flags": 0,
+      "rule_hit_decisions": 0,
+      "mean_ecs": 0.666667,
+      "kernel_after": {
+        "total": 125647,
+        "pass": 125472,
+        "safety": 0,
+        "drop_flow": 0,
+        "drop_src": 144,
+        "drop_prefix": 0,
+        "drop_rule": 7,
+        "rate_drop": 0,
+        "rb_full": 0,
+        "emitted": 19823,
+        "non_ip": 24
+      },
+      "rule_hits_after": {
+        "1": [
+          10,
+          7
+        ]
+      }
+    },
+    {
+      "scenario": "dos_synflood",
+      "class": "DoS",
+      "evasion": false,
+      "duration_s": 8.351621627807617,
+      "decisions": 1514,
+      "by_action": {
+        "QUARANTINE": 1514
+      },
+      "intercept_share": 1.0,
+      "time_to_first_block_or_quarantine_s": 3.795989990234375,
+      "adversarial_flags": 80,
+      "rule_hit_decisions": 1494,
+      "mean_ecs": 0.31660030118890364,
+      "kernel_after": {
+        "total": 165523,
+        "pass": 161727,
+        "safety": 3,
+        "drop_flow": 0,
+        "drop_src": 144,
+        "drop_prefix": 0,
+        "drop_rule": 2169,
+        "rate_drop": 1454,
+        "rb_full": 0,
+        "emitted": 27549,
+        "non_ip": 26
+      },
+      "rule_hits_after": {
+        "1": [
+          2172,
+          2169
+        ]
+      }
+    },
+    {
+      "scenario": "webattack_enum",
+      "class": "WebAttack",
+      "evasion": false,
+      "duration_s": 15.413041830062866,
+      "decisions": 5,
+      "by_action": {
+        "QUARANTINE": 5
+      },
+      "intercept_share": 1.0,
+      "time_to_first_block_or_quarantine_s": 5.967825889587402,
+      "adversarial_flags": 0,
+      "rule_hit_decisions": 5,
+      "mean_ecs": 0.333333,
+      "kernel_after": {
+        "total": 166739,
+        "pass": 162751,
+        "safety": 3,
+        "drop_flow": 0,
+        "drop_src": 144,
+        "drop_prefix": 0,
+        "drop_rule": 2361,
+        "rate_drop": 1454,
+        "rb_full": 0,
+        "emitted": 27924,
+        "non_ip": 26
+      },
+      "rule_hits_after": {
+        "1": [
+          2364,
+          2361
+        ],
+        "2": [
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "scenario": "dos_slowloris",
+      "class": "DoS",
+      "evasion": false,
+      "duration_s": 6.454577445983887,
+      "decisions": 152,
+      "by_action": {
+        "QUARANTINE": 152
+      },
+      "intercept_share": 1.0,
+      "time_to_first_block_or_quarantine_s": 5.618712425231934,
+      "adversarial_flags": 0,
+      "rule_hit_decisions": 152,
+      "mean_ecs": 0.3706137236842106,
+      "kernel_after": {
+        "total": 167605,
+        "pass": 162751,
+        "safety": 3,
+        "drop_flow": 0,
+        "drop_src": 144,
+        "drop_prefix": 0,
+        "drop_rule": 3224,
+        "rate_drop": 1454,
+        "rb_full": 0,
+        "emitted": 28778,
+        "non_ip": 29
+      },
+      "rule_hits_after": {
+        "1": [
+          3227,
+          3224
+        ],
+        "2": [
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "scenario": "ddos_spoofed",
+      "class": "DDoS",
+      "evasion": false,
+      "duration_s": 6.414182186126709,
+      "decisions": 241,
+      "by_action": {
+        "QUARANTINE": 241
+      },
+      "intercept_share": 1.0,
+      "time_to_first_block_or_quarantine_s": 3.7420871257781982,
+      "adversarial_flags": 0,
+      "rule_hit_decisions": 241,
+      "mean_ecs": 0.33333300000000005,
+      "kernel_after": {
+        "total": 169552,
+        "pass": 162751,
+        "safety": 3,
+        "drop_flow": 0,
+        "drop_src": 144,
+        "drop_prefix": 0,
+        "drop_rule": 5170,
+        "rate_drop": 1454,
+        "rb_full": 0,
+        "emitted": 30714,
+        "non_ip": 30
+      },
+      "rule_hits_after": {
+        "1": [
+          5173,
+          5170
+        ],
+        "2": [
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "scenario": "portscan_connect",
+      "class": "PortScan",
+      "evasion": false,
+      "duration_s": 15.366299629211426,
+      "decisions": 754,
+      "by_action": {
+        "QUARANTINE": 754
+      },
+      "intercept_share": 1.0,
+      "time_to_first_block_or_quarantine_s": 17.576202869415283,
+      "adversarial_flags": 726,
+      "rule_hit_decisions": 753,
+      "mean_ecs": 0.021662238726790455,
+      "kernel_after": {
+        "total": 174199,
+        "pass": 165045,
+        "safety": 3,
+        "drop_flow": 0,
+        "drop_src": 144,
+        "drop_prefix": 0,
+        "drop_rule": 6708,
+        "rate_drop": 2263,
+        "rb_full": 0,
+        "emitted": 33055,
+        "non_ip": 36
+      },
+      "rule_hits_after": {
+        "1": [
+          6711,
+          6708
+        ],
+        "2": [
+          0,
+          0
+        ],
+        "3": [
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "scenario": "bruteforce_lowslow",
+      "class": "BruteForce",
+      "evasion": true,
+      "duration_s": 40.34556031227112,
+      "decisions": 7,
+      "by_action": {
+        "QUARANTINE": 3,
+        "BLOCK": 4
+      },
+      "intercept_share": 1.0,
+      "time_to_first_block_or_quarantine_s": 10.801958560943604,
+      "adversarial_flags": 0,
+      "rule_hit_decisions": 1,
+      "mean_ecs": 0.5238095714285714,
+      "kernel_after": {
+        "total": 184140,
+        "pass": 172039,
+        "safety": 3,
+        "drop_flow": 0,
+        "drop_src": 160,
+        "drop_prefix": 0,
+        "drop_rule": 6715,
+        "rate_drop": 5188,
+        "rb_full": 0,
+        "emitted": 35630,
+        "non_ip": 36
+      },
+      "rule_hits_after": {
+        "1": [
+          6718,
+          6715
+        ],
+        "2": [
+          0,
+          0
+        ],
+        "3": [
+          0,
+          0
+        ],
+        "4": [
+          0,
+          0
+        ],
+        "5": [
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "scenario": "portscan_slow",
+      "class": "PortScan",
+      "evasion": true,
+      "duration_s": 40.41226005554199,
+      "decisions": 21,
+      "by_action": {
+        "QUARANTINE": 18,
+        "BLOCK": 3
+      },
+      "intercept_share": 1.0,
+      "time_to_first_block_or_quarantine_s": 4.161847352981567,
+      "adversarial_flags": 0,
+      "rule_hit_decisions": 17,
+      "mean_ecs": 0.5238094285714284,
+      "kernel_after": {
+        "total": 193912,
+        "pass": 178587,
+        "safety": 3,
+        "drop_flow": 0,
+        "drop_src": 241,
+        "drop_prefix": 0,
+        "drop_rule": 6733,
+        "rate_drop": 8310,
+        "rb_full": 0,
+        "emitted": 37782,
+        "non_ip": 38
+      },
+      "rule_hits_after": {
+        "1": [
+          6736,
+          6733
+        ],
+        "2": [
+          0,
+          0
+        ],
+        "3": [
+          0,
+          0
+        ],
+        "4": [
+          0,
+          0
+        ],
+        "5": [
+          0,
+          0
+        ],
+        "6": [
+          0,
+          0
+        ]
+      }
+    },
+    {
+      "scenario": "dos_padded",
+      "class": "DoS",
+      "evasion": true,
+      "duration_s": 8.383404016494751,
+      "decisions": 583,
+      "by_action": {
+        "QUARANTINE": 583
+      },
+      "intercept_share": 1.0,
+      "time_to_first_block_or_quarantine_s": 3.8047945499420166,
+      "adversarial_flags": 0,
+      "rule_hit_decisions": 583,
+      "mean_ecs": 0.3356200257289881,
+      "kernel_after": null,
+      "rule_hits_after": null
+    },
+    {
+      "scenario": "portscan_syn",
+      "class": "PortScan",
+      "evasion": false,
+      "duration_s": 15.429846048355103,
+      "decisions": 1946,
+      "by_action": {
+        "QUARANTINE": 1836,
+        "BLOCK": 110
+      },
+      "intercept_share": 1.0,
+      "time_to_first_block_or_quarantine_s": 5.273951768875122,
+      "adversarial_flags": 975,
+      "rule_hit_decisions": 1832,
+      "mean_ecs": 0.34395354110996923,
+      "kernel_after": {
+        "total": 209538,
+        "pass": 186029,
+        "safety": 3,
+        "drop_flow": 0,
+        "drop_src": 241,
+        "drop_prefix": 0,
+        "drop_rule": 10194,
+        "rate_drop": 13030,
+        "rb_full": 0,
+        "emitted": 44218,
+        "non_ip": 41
+      },
+      "rule_hits_after": {
+        "1": [
+          9174,
+          9171
+        ],
+        "2": [
+          938,
+          938
+        ],
+        "3": [
+          85,
+          85
+        ],
+        "4": [
+          0,
+          0
+        ],
+        "5": [
+          0,
+          0
+        ],
+        "6": [
+          0,
+          0
+        ],
+        "7": [
+          0,
+          0
+        ],
+        "8": [
+          0,
+          0
+        ]
+      }
+    }
+  ],
+  "benign_client": {
+    "decisions": 4472,
+    "by_action": {
+      "QUARANTINE": 481,
+      "ALLOW_SHADOW": 179,
+      "ALLOW": 3812
+    }
+  },
+  "latency": {
+    "event_to_decision_ms_p50": 8340.797005,
+    "p99": 35436.7527263,
+    "amortised_decide_ms_per_snapshot_p50": 8.503835771482905,
+    "amortised_p99": 146.31780671250002,
+    "n": 14716
+  },
+  "decisions_per_s": 41.656233098623204,
+  "rules": [
+    {
+      "id": 1,
+      "status": "ROLLED_BACK",
+      "text": "k_src_syn_ratio_pm > 266",
+      "class_id": 3,
+      "fidelity_json": "{\"agreement\": 1.0, \"fpr\": 0.0, \"recall\": 1.0, \"n_fit\": 1520, \"n_holdout\": 652, \"n_pos\": 1002, \"n_neg\": 1170, \"min_agreement\": 0.9976252158894646, \"max_fpr\": 0.01, \"features_restricted_to_top_groups\": true, \"top_groups\": [\"G1\", \"G2\"]}",
+      "canary_json": "{\"kernel_matched_pkts\": 3, \"matched_flows\": 1, \"benign_flows_seen\": 153, \"benign_flows_matched\": 0, \"canary_fp_rate\": 0.0, \"max_fpr\": 0.01, \"seconds\": 15}",
+      "fp_json": "{\"matched_flows\": 6263, \"model_benign_flows\": 586, \"admin_fp_reports\": 0, \"fp_rate\": 0.09356538400127734, \"limit\": 0.05, \"min_matches\": 20}",
+      "reason": "automatic rollback: fp_rate 0.0936 > 0.05"
+    },
+    {
+      "id": 2,
+      "status": "PROMOTED",
+      "text": "k_src_syn_ratio_pm > 625 AND k_src_syn_count > 41",
+      "class_id": 3,
+      "fidelity_json": "{\"agreement\": 1.0, \"fpr\": 0.0, \"recall\": 1.0, \"n_fit\": 3599, \"n_holdout\": 1543, \"n_pos\": 2120, \"n_neg\": 3022, \"min_agreement\": 0.9976252158894646, \"max_fpr\": 0.01, \"features_restricted_to_top_groups\": true, \"top_groups\": [\"G5\", \"G1\"]}",
+      "canary_json": "{\"kernel_matched_pkts\": 0, \"matched_flows\": 0, \"benign_flows_seen\": 0, \"benign_flows_matched\": 0, \"canary_fp_rate\": 0.0, \"max_fpr\": 0.01, \"seconds\": 15}",
+      "fp_json": "{\"matched_flows\": 938, \"model_benign_flows\": 0, \"admin_fp_reports\": 0, \"fp_rate\": 0.0, \"limit\": 0.05, \"min_matches\": 20}",
+      "reason": null
+    },
+    {
+      "id": 3,
+      "status": "PROMOTED",
+      "text": "k_src_mean_size <= 361",
+      "class_id": 1,
+      "fidelity_json": "{\"agreement\": 1.0, \"fpr\": 0.0, \"recall\": 1.0, \"n_fit\": 1073, \"n_holdout\": 460, \"n_pos\": 216, \"n_neg\": 1317, \"min_agreement\": 0.9976252158894646, \"max_fpr\": 0.01, \"features_restricted_to_top_groups\": false, \"top_groups\": [\"G3\", \"G10\"]}",
+      "canary_json": "{\"kernel_matched_pkts\": 0, \"matched_flows\": 0, \"benign_flows_seen\": 28, \"benign_flows_matched\": 0, \"canary_fp_rate\": 0.0, \"max_fpr\": 0.01, \"seconds\": 15}",
+      "fp_json": "{\"matched_flows\": 83, \"model_benign_flows\": 0, \"admin_fp_reports\": 0, \"fp_rate\": 0.0, \"limit\": 0.05, \"min_matches\": 20}",
+      "reason": null
+    },
+    {
+      "id": 4,
+      "status": "FIDELITY_FAILED",
+      "text": "k_src_pkts <= 69 AND k_src_pps <= 1",
+      "class_id": 3,
+      "fidelity_json": "{\"agreement\": 0.8902439024390244, \"fpr\": 0.0, \"recall\": 0.8658718330849479, \"n_fit\": 1911, \"n_holdout\": 820, \"n_pos\": 1964, \"n_neg\": 767, \"min_agreement\": 0.9976252158894646, \"max_fpr\": 0.01, \"features_restricted_to_top_groups\": true, \"top_groups\": [\"G4\", \"G2\"]}",
+      "canary_json": null,
+      "fp_json": null,
+      "reason": "agreement 0.8902 / fpr 0.0000 vs thresholds"
+    },
+    {
+      "id": 5,
+      "status": "FIDELITY_FAILED",
+      "text": "k_src_pkts <= 2326 AND k_src_mean_size <= 50",
+      "class_id": 3,
+      "fidelity_json": "{\"agreement\": 0.8815426997245179, \"fpr\": 0.0, \"recall\": 0.8027522935779816, \"n_fit\": 1694, \"n_holdout\": 726, \"n_pos\": 1924, \"n_neg\": 496, \"min_agreement\": 0.9976252158894646, \"max_fpr\": 0.01, \"features_restricted_to_top_groups\": true, \"top_groups\": [\"G4\", \"G2\"]}",
+      "canary_json": null,
+      "fp_json": null,
+      "reason": "agreement 0.8815 / fpr 0.0000 vs thresholds"
+    },
+    {
+      "id": 6,
+      "status": "FIDELITY_FAILED",
+      "text": "k_src_mean_size <= 72 AND k_src_mean_size > 36",
+      "class_id": 3,
+      "fidelity_json": "{\"agreement\": 0.9285714285714286, \"fpr\": 0.07177814029363784, \"recall\": 0.9411764705882353, \"n_fit\": 1469, \"n_holdout\": 630, \"n_pos\": 1415, \"n_neg\": 684, \"min_agreement\": 0.9976252158894646, \"max_fpr\": 0.01, \"features_restricted_to_top_groups\": true, \"top_groups\": [\"G4\", \"G2\"]}",
+      "canary_json": null,
+      "fp_json": null,
+      "reason": "agreement 0.9286 / fpr 0.0718 vs thresholds"
+    },
+    {
+      "id": 7,
+      "status": "PROMOTED",
+      "text": "k_src_syn_ratio_pm > 237 AND k_src_pkts <= 67",
+      "class_id": 3,
+      "fidelity_json": "{\"agreement\": 1.0, \"fpr\": 0.0, \"recall\": 1.0, \"n_fit\": 861, \"n_holdout\": 370, \"n_pos\": 435, \"n_neg\": 796, \"min_agreement\": 0.9976252158894646, \"max_fpr\": 0.01, \"features_restricted_to_top_groups\": true, \"top_groups\": [\"G4\", \"G1\"]}",
+      "canary_json": "{\"kernel_matched_pkts\": 0, \"matched_flows\": 0, \"benign_flows_seen\": 1658, \"benign_flows_matched\": 0, \"canary_fp_rate\": 0.0, \"max_fpr\": 0.01, \"seconds\": 15}",
+      "fp_json": "{\"matched_flows\": 0, \"model_benign_flows\": 0, \"admin_fp_reports\": 0, \"fp_rate\": 0.0, \"limit\": 0.05, \"min_matches\": 20}",
+      "reason": null
+    },
+    {
+      "id": 8,
+      "status": "FIDELITY_FAILED",
+      "text": "k_src_syn_count <= 20 AND k_src_syn_ratio_pm > 28 AND k_src_syn_ratio_pm <= 912",
+      "class_id": 3,
+      "fidelity_json": "{\"agreement\": 0.18436213991769548, \"fpr\": 0.4307692307692308, \"recall\": 0.0024242424242424242, \"n_fit\": 2835, \"n_holdout\": 1215, \"n_pos\": 831, \"n_neg\": 3219, \"min_agreement\": 0.9976252158894646, \"max_fpr\": 0.01, \"features_restricted_to_top_groups\": true, \"top_groups\": [\"G1\", \"G10\"]}",
+      "canary_json": null,
+      "fp_json": null,
+      "reason": "agreement 0.1844 / fpr 0.4308 vs thresholds"
+    }
+  ],
+  "kernel_before": {
+    "stats": {
+      "total": 30404,
+      "pass": 30382,
+      "safety": 0,
+      "drop_flow": 0,
+      "drop_src": 0,
+      "drop_prefix": 0,
+      "drop_rule": 0,
+      "rate_drop": 0,
+      "rb_full": 0,
+      "emitted": 5170,
+      "non_ip": 22
+    },
+    "extra": [
+      "ev_dropped=0",
+      "active=0"
+    ],
+    "rule_hits": {}
+  },
+  "kernel_after": {
+    "stats": {
+      "total": 209700,
+      "pass": 186119,
+      "safety": 3,
+      "drop_flow": 0,
+      "drop_src": 241,
+      "drop_prefix": 0,
+      "drop_rule": 10194,
+      "rate_drop": 13102,
+      "rb_full": 0,
+      "emitted": 44270,
+      "non_ip": 41
+    },
+    "extra": [
+      "ev_dropped=0",
+      "active=1"
+    ],
+    "rule_hits": {
+      "1": [
+        9174,
+        9171
+      ],
+      "2": [
+        938,
+        938
+      ],
+      "3": [
+        85,
+        85
+      ],
+      "4": [
+        0,
+        0
+      ],
+      "5": [
+        0,
+        0
+      ],
+      "6": [
+        0,
+        0
+      ],
+      "7": [
+        0,
+        0
+      ],
+      "8": [
+        0,
+        0
+      ]
+    }
+  },
+  "seconds": 353.27246141433716
+}
