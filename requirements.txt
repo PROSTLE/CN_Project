@@ -1,0 +1,15 @@
+numpy
+pandas
+pyarrow
+scikit-learn
+lightgbm
+xgboost
+interpret
+ncps
+shap
+lime
+river
+fastapi
+uvicorn[standard]
+cryptography
+pyyaml
