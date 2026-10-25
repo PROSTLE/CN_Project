@@ -1,0 +1,32 @@
+{
+  "n_candidates": 7,
+  "certified": {
+    "n": 4,
+    "test_fpr_mean": 0.0018041237113402063,
+    "test_fpr_max": 0.004123711340206186,
+    "test_recall_mean": 0.7492681566525649,
+    "share_test_fpr_above_budget": 0.0
+  },
+  "uncertified": {
+    "n": 3,
+    "test_fpr_mean": 0.09518900343642613,
+    "test_fpr_max": 0.2752577319587629,
+    "test_recall_mean": 0.9803764873024329,
+    "share_test_fpr_above_budget": 0.6666666666666666
+  },
+  "direct_promotion_all": {
+    "n": 7,
+    "test_fpr_mean": 0.041826215022091315,
+    "test_fpr_max": 0.2752577319587629,
+    "test_recall_mean": 0.848314584073937,
+    "share_test_fpr_above_budget": 0.2857142857142857
+  },
+  "canary_then_promote": {
+    "n": 4,
+    "test_fpr_mean": 0.0018041237113402063,
+    "test_fpr_max": 0.004123711340206186,
+    "test_recall_mean": 0.7492681566525649,
+    "share_test_fpr_above_budget": 0.0
+  },
+  "certified_but_failed_canary": 0
+}

@@ -1,0 +1,50 @@
+{
+  "gated": {
+    "benign_block_rate": 0.008247422680412371,
+    "benign_quarantine_rate": 0.9917525773195877,
+    "attack_block_recall": 0.7147117296222664,
+    "attack_intercept_recall": 1.0,
+    "attack_quarantine_rate": 0.2852882703777336,
+    "n_benign": 970,
+    "n_attack": 5030
+  },
+  "conformal_only": {
+    "benign_block_rate": 0.026804123711340205,
+    "benign_quarantine_rate": 0.9731958762886598,
+    "attack_block_recall": 1.0,
+    "attack_intercept_recall": 1.0,
+    "attack_quarantine_rate": 0.0,
+    "n_benign": 970,
+    "n_attack": 5030
+  },
+  "argmax": {
+    "benign_block_rate": 0.0,
+    "benign_quarantine_rate": 0.0,
+    "attack_block_recall": 1.0,
+    "attack_intercept_recall": 1.0,
+    "attack_quarantine_rate": 0.0,
+    "n_benign": 970,
+    "n_attack": 5030
+  },
+  "argmax_threshold_at_gated_recall": {
+    "recall": 1.0,
+    "benign_flag_rate": 0.0,
+    "threshold": 0.9988503245082658
+  },
+  "wrong_decisions": {
+    "n_wrong": 0,
+    "n": 6000,
+    "caught_by_quarantine": null,
+    "caught_by_low_ecs_R1": null,
+    "caught_by_ecs_band_R6_R7": null,
+    "caught_conformal_only": null,
+    "ecs_mean_wrong": null,
+    "ecs_mean_correct": 0.8439498897707233
+  },
+  "row_hist": {
+    "R4": 3603,
+    "R6": 1443,
+    "R3": 919,
+    "R1": 35
+  }
+}
