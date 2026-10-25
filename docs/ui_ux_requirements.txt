@@ -1,0 +1,275 @@
+==============================================================================
+GLASSWALL - UI / UX REQUIREMENTS (WEBSITE VERSION)                 v1.0
+Admin console: React frontend + FastAPI backend + WebSocket live feed [SRC]
+Served locally from the docker compose "api+ui" service. NOT publicly hosted
+before the provisional patent is filed [SRC 13.7].
+Tags: [SRC] ideation v3, [PROPOSED] design choice, [MEASURED] runtime data.
+CONFIDENTIAL.
+==============================================================================
+
+------------------------------------------------------------------------------
+0. UX PRINCIPLES
+------------------------------------------------------------------------------
+  U1 "Glass box": every verdict is one click from its WHY (attributions from
+     3 sources, ECS, conformal set, rule, ledger entry).
+  U2 Honesty in the UI: show uncertainty (QUARANTINE, conformal set, ECS)
+     rather than hide it; label environment ("WSL2 lab", "swtpm - software
+     TPM"); never show placeholder numbers - empty state instead.
+  U3 Admin is never locked out: safety allow-list visible and immutable.
+  U4 Group-level language first (G1..G14 human names); raw features on
+     expand.
+  U5 Live but calm: streaming updates throttled; pause button on live view.
+  U6 Accessible: decision state conveyed by colour + icon + text label;
+     WCAG 2.1 AA contrast; full keyboard nav [PROPOSED].
+
+------------------------------------------------------------------------------
+1. INFORMATION ARCHITECTURE (left nav)
+------------------------------------------------------------------------------
+  /login                     [PROPOSED]
+  /live                      Live flow table (home)           [SRC]
+  /flows/:flowId             Flow detail (full-page "Why?")   [SRC]
+  /review                    Review queue                     [SRC]
+  /rules                     Rule studio                      [SRC]
+  /rules/:ruleId             Rule detail / certificate        [SRC]
+  /audit                     Audit & ledger                   [SRC]
+  /models                    Models, drift, calibration       [PROPOSED page;
+                                                               content SRC]
+  /experiments               E1-E6 / P1-P5 results            [PROPOSED page]
+  /demo                      Attack toggles / demo control    [SRC]
+  /settings                  Policy, thresholds (read-only learned values),
+                             allow-list, users                [PROPOSED]
+  Global top bar: environment badge, enforcement path badge (XDP generic /
+  tc / nft), active model-set short hash, ledger integrity tick, policy mode
+  (fail-closed / fail-open), alerts bell, user menu.
+
+------------------------------------------------------------------------------
+2. VISUAL LANGUAGE [PROPOSED]
+------------------------------------------------------------------------------
+  Decision badges (colour + icon + text, never colour alone):
+    ALLOW               green   check icon
+    ALLOW + shadow-log  green outline  eye icon
+    BLOCK               red     shield-x icon
+    QUARANTINE          amber   hourglass icon
+    ADVERSARIAL FLAG    violet  warning-triangle icon (overlay chip)
+  ECS gauge: 0..1 semicircle; zones drawn from the ACTIVE config tau_lo /
+    tau_hi (fetched from API, never hardcoded in UI).
+  Attribution colours: positive (toward malicious) warm, negative (toward
+    benign) cool; diverging, colour-blind-safe palette.
+  Three explanation sources have fixed series identity across all charts:
+    GBDT/TreeSHAP, EBM, CfC-IG (+ LIME / KernelSHAP offline as dashed).
+  Typography: sans for UI, monospace for hashes, 5-tuples, rule text.
+  Themes: light + dark (security consoles are often dark); both via CSS
+    tokens.
+  Density: compact tables (32px rows) with comfortable option.
+
+------------------------------------------------------------------------------
+3. SCREEN SPECIFICATIONS
+------------------------------------------------------------------------------
+3.1 LIVE FLOW TABLE (/live)                                       [SRC]
+  Purpose: watch decisions in real time.
+  Header KPIs (all [MEASURED] from API, rolling window selectable 1m/10m/1h):
+    flows/s, % ALLOW / BLOCK / QUARANTINE, adversarial flags, p50/p99
+    decision latency, active promoted rules, drift status.
+  Table columns:
+    time | src -> dst (ip:port) | proto | packets | checkpoint (8/16/32/end)
+    | decision badge | ECS gauge (mini) | confidence | conformal set (chips)
+    | top-3 groups (mini bars) | rule hit (id) | ledger tick
+  Interactions:
+    - Row click -> opens "Why?" drawer (right side, 40-50% width).
+    - Filters: action, class, ECS range, adversarial only, src, rule id.
+    - Pause/resume stream; "N new" pill when paused.
+    - Quick actions per row (role-gated): Block source, Allow flow (with
+      reason; both create ledger-recorded admin actions).
+  Data: WebSocket channel "decisions" (see trd.txt). Virtualised list for
+    large row counts.
+  States: empty ("No traffic yet - start the lab"), disconnected (banner +
+    auto-retry), error.
+
+3.2 "WHY?" DRAWER / FLOW DETAIL                                   [SRC]
+  Sections, top to bottom:
+   a) Verdict header: badge, class, checkpoint timeline (8 -> 16 -> 32 with
+      the decision at each checkpoint), policy mode, kernel action applied.
+   b) Narration (2 sentences, verified) with "verified" tick or "template
+      fallback" label. Loading skeleton while async narrator works. Narration
+      absent -> show template text, never blank.
+   c) Group attribution waterfall - 3 sources SIDE BY SIDE (small multiples,
+      same group order, same scale). Top-k highlighted; k from active config.
+   d) ECS breakdown: value, gauge with tau zones, table of pairs
+      (GBDT-EBM, GBDT-CfC, EBM-CfC): Jaccard@k, signAgree, A_ij.
+   e) Conformal panel: set S as chips, alpha_t used, per-class
+      nonconformity scores vs thresholds, which decision-table row fired.
+   f) Per-packet time view (CfC): x = packet index 0..N-1, y = channel
+      (size, direction, flags, delta-t); heat cells = attribution. Hover
+      shows packet record.
+   g) Adversarial signals (if any): ECS collapse, Lipschitz estimate,
+      offline-vs-hot disagreement, OOD score.
+   h) Offline detail on demand: button "Run LIME / KernelSHAP" -> async job
+      -> shows result and disagreement vs hot path. Labelled "offline,
+      sampling-based".
+   i) What-if link (3.3).
+   j) Provenance: ledger seq, entry hash (short), batch id, signed at,
+      model-set hash. "Verify this entry" button.
+   k) Raw features (collapsed): table of feature, group, value, realizable.
+
+3.3 WHAT-IF / COUNTERFACTUAL PANEL                                [SRC]
+  - Shows DiCE-style minimal changes restricted to realizable features:
+    "If SYN-ratio were below X this would be allowed" (X comes from the
+    computed counterfactual - never typed in UI).
+  - Sliders for realizable features only; on change, POST /whatif returns
+    new probs/ECS/set/action (sandbox only - never enforces).
+  - Clear label: "Simulation - not applied to traffic".
+
+3.4 REVIEW QUEUE (/review)                                        [SRC]
+  - List of QUARANTINE tickets; sort by priority, age, adversarial first.
+  - Columns: opened | flow | reason (decision-table row) | ECS | set |
+    top groups | rate-limit applied | assignee | status.
+  - Ticket view = Why? drawer + verdict form:
+      verdict class (dropdown of class_labels), action (Allow / Block),
+      optional "apply to source", notes (required for overrule).
+  - On submit: label -> ACI + retraining queue; kernel entry updated;
+    ledger records admin verdict; toast "Verdict recorded, feeding ACI".
+  - Bulk actions on same-cluster tickets [PROPOSED].
+  - Human-study mode toggle (hides explanations for the "without" arm,
+    records time-to-decision) [SRC human study; mechanism PROPOSED].
+
+3.5 RULE STUDIO (/rules)                                          [SRC]
+  - Kanban or tabbed list by status: Proposed | Canary | Promoted |
+    Rejected/Failed | Expired/Rolled back.
+  - Rule card: human-readable rule text (monospace), attack class,
+    confidence, kernel slot, TTL countdown, status chip.
+  - Rule detail:
+     * Fidelity certificate: agreement, FPR, replay window, n benign/attack,
+       thresholds used (from config version), signature valid tick,
+       download cert JSON.
+     * Canary results: duration, would-have-dropped, agree/disagree with
+       model, pass/fail vs criterion; mini time series.
+     * Live FP monitor (if promoted): indicator vs rollback limit line.
+     * Provenance: list of originating decisions -> link to each Why? drawer
+       and ledger entry.
+     * Realizability: each predicate shows its kernel counter source.
+  - Actions: Accept (start canary / promote after canary), Reject, Expire
+    now, Extend TTL [PROPOSED]. Every action confirm-dialog + ledger/audit.
+  - Promotion animation: "Atomic swap A -> B" indicator with measured swap
+    time.
+
+3.6 AUDIT (/audit)                                                [SRC]
+  - Search decisions: time range, action, class, flow, src, rule, model set.
+  - Ledger integrity widget: last verified seq, status (green/red), "Verify
+    now" (range selectable) -> shows progress, result, first bad seq and
+    failure kind (EDIT/DELETE/REORDER/SIG/QUOTE/PCR).
+  - TPM attestation panel: active PCR index + value, replayed event log
+    (models, ruleset, config) with hashes, quote verification status,
+    environment label "swtpm (software TPM) - demo".
+  - Merkle batches table: range, root, signature valid, signed at.
+  - Signed export bundle: choose filter -> JSON (and PDF [SRC]) with
+    signature; show sha256.
+
+3.7 MODELS & DRIFT (/models)                         [PROPOSED page]
+  - Active model set: members, families, hashes, activated at.
+  - Calibration: current alpha_t per class (sparkline), alpha_target line,
+    empirical coverage (from delayed labels).
+  - Drift: ADWIN events on score and group streams; recalibration and
+    retrain jobs with status.
+  - Ablation summary links to /experiments.
+
+3.8 EXPERIMENTS (/experiments)                       [PROPOSED page]
+  - Tabs E1..E6 and P1..P5; each shows tables/plots from experiment_runs
+    with run metadata (dataset, split, seed, commit, env).
+  - Strict rule: if no run exists -> "No result yet - run `make e1`"; never
+    a sample number.
+  - Export table as CSV / PNG for the patent spec and report.
+
+3.9 DEMO CONTROL (/demo)                                          [SRC]
+  - Toggles: Normal traffic, Port scan (nmap), SYN flood (hping3), Brute
+    force (hydra), Low-and-slow, Explainer-manipulation [SRC list];
+    slowhttptest [SRC tool list].
+  - Each toggle shows: tool command preview, target, start/stop, elapsed,
+    live counters for that scenario's flows.
+  - "Tamper one ledger row" button (DEMO role only, guarded by typed
+    confirmation) for demo step D5.
+  - Script checklist D1..D6 with ticks as each step's condition is
+    observed (e.g. "rule promoted" event received).
+
+3.10 SETTINGS (/settings)                           [PROPOSED]
+  - Policy: fail-closed / fail-open-with-rate-limit (admin only).
+  - Learned thresholds (k, alpha, tau_lo, tau_hi, fidelity) shown READ-ONLY
+    with provenance (run id). Changing them = activating another config
+    version produced by a validation run.
+  - Safety allow-list (view; edit requires restart + confirm).
+  - Users & roles.
+
+------------------------------------------------------------------------------
+4. KEY USER FLOWS (detailed in design_flow.txt)
+------------------------------------------------------------------------------
+  UF1 Investigate a block: Live -> row -> Why? -> attributions -> ledger.
+  UF2 Resolve quarantine: Review -> ticket -> verdict -> ACI fed.
+  UF3 Approve a rule: Rule studio -> certificate -> canary -> promote.
+  UF4 Audit a past decision: Audit -> search -> verify -> export bundle.
+  UF5 Respond to adversarial flag: alert -> Why? -> offline LIME -> verdict.
+  UF6 Run the demo: Demo -> toggles -> checklist D1..D6.
+
+------------------------------------------------------------------------------
+5. REAL-TIME BEHAVIOUR
+------------------------------------------------------------------------------
+  - WebSocket reconnect with backoff; resume from last stream id.
+  - UI batches incoming rows every ~250-500 ms [PROPOSED] to avoid jank.
+  - Alerts toast for: adversarial flag, rule promoted / rolled back, drift,
+    ledger verification failure (sticky red).
+  - Optimistic UI is NOT used for enforcement actions; wait for server ack
+    (enforcement must reflect kernel truth).
+
+------------------------------------------------------------------------------
+6. RESPONSIVENESS
+------------------------------------------------------------------------------
+  - Primary: desktop >= 1280px (ops console).
+  - Tablet 768-1279: drawer becomes full-screen overlay; table hides
+    low-priority columns (packets, rule hit).
+  - Mobile < 768: read-only summary cards (KPIs, alerts, review queue
+    list); no rule promotion on mobile [PROPOSED].
+  - No horizontal page scroll; tables scroll inside their container.
+
+------------------------------------------------------------------------------
+7. ACCESSIBILITY & I18N [PROPOSED]
+------------------------------------------------------------------------------
+  - WCAG 2.1 AA; aria-live="polite" region for new alerts (not every row).
+  - Charts have table alternatives ("view as table").
+  - English UI; strings in a resource file so Hindi/other can be added.
+
+------------------------------------------------------------------------------
+8. ROLES & PERMISSIONS [PROPOSED]
+------------------------------------------------------------------------------
+  Action                         ADMIN  ANALYST  AUDITOR  DEMO
+  View live / why / audit          Y      Y        Y       Y
+  Verdict on review ticket         Y      Y        -       Y
+  Accept/reject/expire rules       Y      -        -       Y
+  Change policy mode               Y      -        -       -
+  Run ledger verify / export       Y      Y        Y       Y
+  Attack toggles / tamper demo     -      -        -       Y
+  Manage users                     Y      -        -       -
+
+------------------------------------------------------------------------------
+9. FRONTEND TECH [SRC: React; rest PROPOSED]
+------------------------------------------------------------------------------
+  React + TypeScript + Vite; routing (React Router); server state (TanStack
+  Query); charts (a D3-based lib, e.g. Recharts/visx); tables (TanStack
+  Table + virtualisation); styling via CSS variables / Tailwind; WebSocket
+  native client. Versions pinned in package-lock at setup.
+  All thresholds, class names, group names, k come from the API
+  (/api/meta) - nothing domain-specific hardcoded in the UI.
+
+------------------------------------------------------------------------------
+10. UI ACCEPTANCE CRITERIA
+------------------------------------------------------------------------------
+  AC1 Every decision row opens a Why? drawer with 3-source attributions, ECS
+      breakdown, conformal set and ledger link within 1 click.
+  AC2 No numeric value is rendered unless it came from the API.
+  AC3 tau zones on ECS gauge match the active config version.
+  AC4 Review verdict updates ticket, label table and ACI state (visible on
+      /models) end-to-end.
+  AC5 Rule cannot be promoted from UI without a passed certificate and a
+      passed canary (server-enforced; UI also disables button).
+  AC6 Tampered ledger row shows red with first bad seq within one verify.
+  AC7 Demo checklist D1..D6 completes in a single run.
+==============================================================================
+END UI/UX
+==============================================================================
