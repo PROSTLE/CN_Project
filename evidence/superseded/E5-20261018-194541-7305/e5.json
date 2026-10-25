@@ -1,0 +1,68 @@
+{
+  "clean": {
+    "ok": true,
+    "first_bad_seq": null,
+    "kind": null,
+    "entries": 14793,
+    "batches": 70,
+    "quotes_checked": 70,
+    "detail": "",
+    "seconds": 1.8476568510004654
+  },
+  "kinds": {
+    "edit_payload": {
+      "trials": 20,
+      "detection_rate": 1.0,
+      "located_exact_rate": 0.3,
+      "reported_kinds": [
+        "edit"
+      ],
+      "verify_s_mean": 0.1678364060000149
+    },
+    "delete_entry": {
+      "trials": 20,
+      "detection_rate": 1.0,
+      "located_exact_rate": 0.2,
+      "reported_kinds": [
+        "delete"
+      ],
+      "verify_s_mean": 0.14512976790006177
+    },
+    "reorder_entries": {
+      "trials": 20,
+      "detection_rate": 1.0,
+      "located_exact_rate": 0.3,
+      "reported_kinds": [
+        "edit"
+      ],
+      "verify_s_mean": 0.16095231905010224
+    },
+    "edit_and_rechain": {
+      "trials": 20,
+      "detection_rate": 1.0,
+      "located_exact_rate": 0.0,
+      "reported_kinds": [
+        "merkle-root"
+      ],
+      "verify_s_mean": 0.26444251779989825
+    },
+    "forge_quote_nonce": {
+      "trials": 20,
+      "detection_rate": 1.0,
+      "located_exact_rate": null,
+      "reported_kinds": [
+        "tpm-quote"
+      ],
+      "verify_s_mean": 1.740538487699996
+    },
+    "edit_pcr_event": {
+      "trials": 20,
+      "detection_rate": 1.0,
+      "located_exact_rate": null,
+      "reported_kinds": [
+        "pcr-replay"
+      ],
+      "verify_s_mean": 1.7466519130498
+    }
+  }
+}
