@@ -1,0 +1,348 @@
+==============================================================================
+GLASSWALL - TECHNICAL REQUIREMENTS DOCUMENT (TRD)                  v1.0
+Tags: [SRC] ideation v3, [PROPOSED] engineering choice, [LEARNED] fitted
+(never hardcoded), [MEASURED] produced by experiments only.
+CONFIDENTIAL.
+==============================================================================
+
+------------------------------------------------------------------------------
+1. RUNTIME ENVIRONMENT [SRC section 5]
+------------------------------------------------------------------------------
+  Host: Windows 10/11, Docker Desktop with WSL2 backend, Git, VS Code.
+  Kernel: the single WSL2 Linux kernel shared by all containers.
+  Checks (Week 1, record results in enforcement_path_log):
+    - privileged container can load eBPF;
+    - mount bpffs:  mount -t bpf bpf /sys/fs/bpf
+    - ls /sys/kernel/btf/vmlinux (nice to have; CO-RE NOT required)
+    - xdpgeneric attach on veth works? else tc clsact? else nftables.
+  No kernel headers needed: XDP program is plain C with libbpf helpers,
+  compiled by clang inside the container [SRC].
+
+------------------------------------------------------------------------------
+2. CONTAINER TOPOLOGY (docker compose) [SRC]
+------------------------------------------------------------------------------
+  Service   Image base [PROPOSED]   Role
+  attacker  ubuntu                  nmap, hping3, hydra, slowhttptest,
+                                    iperf3, curl
+  victim    ubuntu/nginx            nginx HTTP, sshd, vsftpd, small DNS
+  gateway   ubuntu + clang/llvm,    privileged; ip_forward=1; on two networks
+            Go, Python              (attacker-net, victim-net); runs datapath
+                                    agent AND brain (same container avoids
+                                    bpffs sharing issues)
+  redis     redis                   decision/event streams
+  postgres  postgres                ledger, rules, review queue, config
+  swtpm     swtpm                   software TPM 2.0; gateway uses tpm2-tools /
+                                    tpm2-pytss
+  api       python (FastAPI)        REST + WebSocket
+  ui        node build -> static    React console (served by api or nginx)
+  narrator  ollama                  Qwen3 small GGUF
+  Networks: attacker-net, victim-net (both via gateway; attacker's default
+  route = gateway; victim's default route = gateway), mgmt-net
+  [PROPOSED] for api/ui/postgres/redis/swtpm/narrator so management traffic
+  never traverses the filtered veths (supports safety allow-list).
+  Gateway capabilities: privileged: true (or CAP_BPF, CAP_NET_ADMIN,
+  CAP_SYS_ADMIN, CAP_PERFMON), sysctls net.ipv4.ip_forward=1, volume
+  /sys/fs/bpf. Unix socket shared only inside gateway.
+  Optional: mininet container (stretch) as second topology.
+
+------------------------------------------------------------------------------
+3. LANGUAGES & LIBRARIES
+------------------------------------------------------------------------------
+  Datapath program: C (XDP; tc variant same source with section switch).
+  Datapath agent:  Go + cilium/ebpf + bpf2go (default) [SRC]; alt C+libbpf.
+  Brain / ML:      Python 3.x [SRC]:
+     lightgbm, xgboost, treelite (+ runtime), shap (TreeSHAP),
+     interpret (EBM), torch + ncps (CfC/NCP), captum or own IG [PROPOSED],
+     mapie (split conformal), river (ADWIN), dice-ml (counterfactuals),
+     lime, shap.KernelExplainer (offline), scikit-learn (RF, MLP, metrics),
+     polars, duckdb, pyarrow (Parquet), numpy.
+  Ledger/TPM:      cryptography (Ed25519, SHA-256), tpm2-pytss / tpm2-tools,
+                   own Merkle implementation [PROPOSED].
+  API:             FastAPI, uvicorn, pydantic, SQLAlchemy + asyncpg, Alembic,
+                   redis-py (async), websockets.
+  UI:              React + TypeScript + Vite [React SRC; rest PROPOSED].
+  Narrator:        Ollama (or llama.cpp) serving Qwen3 1.7B-4B GGUF [SRC].
+  Version pinning: requirements.lock / go.sum / package-lock.json created at
+  setup; no version guessed in code.
+
+------------------------------------------------------------------------------
+4. COMPONENT REQUIREMENTS
+------------------------------------------------------------------------------
+4.1 XDP datapath (datapath/bpf/glasswall.bpf.c)
+  TR-DP-1 Bounds-checked parsing Eth -> IPv4 -> TCP/UDP/ICMP; non-IPv4 ->
+          PASS (IPv6 out of scope unless added) [PROPOSED].
+  TR-DP-2 Order of checks per packet:
+            0) safety_allow -> PASS (always, before anything)
+            1) flow_verdict (5-tuple)       2) src_verdict
+            3) prefix_list (LPM)            4) rules[active_index]
+          First hit decides; expired entries ignored (and reaped by agent).
+  TR-DP-3 RATE_LIMIT via token bucket map keyed by flow or source; refill
+          from bpf_ktime_get_ns; excess -> DROP.
+  TR-DP-4 Rule eval: each rule = conjunction of up to MAX_PRED predicates
+          over realizable counters in src_stats/flow_stats; bounded loops
+          (verifier-friendly, #pragma unroll or bpf_loop if available).
+          Rule mode LOG_ONLY increments canary_counters and does not drop.
+  TR-DP-5 Counters updated before verdict for every packet.
+  TR-DP-6 Ring buffer: packet_record for pkt_index < N (N from config at
+          build, SRC=32); flow_summary periodically / on FIN/RST/idle.
+  TR-DP-7 All sizes/constants from a generated header (config_gen.h)
+          produced from config/glasswall.yaml at build.
+
+4.2 Datapath agent (datapath/cmd/agent, Go)
+  TR-AG-1 Load/attach program to both veths; try XDP generic -> tc ->
+          report failure (nft fallback implemented as separate enforcer
+          with same interface).
+  TR-AG-2 Read ringbuf; forward records to brain over Unix socket
+          /run/glasswall/dp.sock with length-prefixed messages
+          (protobuf or msgpack [PROPOSED]).
+  TR-AG-3 Accept enforcement commands from brain:
+            SET_FLOW_VERDICT, SET_SRC_VERDICT, SET_PREFIX,
+            STAGE_RULESET(rules[]), FLIP_ACTIVE, SET_RULE_MODE(slot,mode),
+            DELETE_ENTRY, READ_CANARY(slot), RESET_CANARY(slot)
+          Each returns ack + monotonic op id + measured latency_us.
+  TR-AG-4 Atomic swap: write all rules to inactive array, then single
+          update of rules_active. Never write the active array in place.
+  TR-AG-5 Reaper: periodic scan removing expired entries; emits events.
+  TR-AG-6 Startup publishes the list of kernel-realizable features + map
+          capacities to brain (single source of truth for compiler).
+  TR-AG-7 Refuses any command that targets safety_allow entries.
+  TR-AG-8 Exposes metrics (packets, drops per reason, map occupancy).
+
+4.3 Feature extractor (brain/features)
+  TR-FX-1 Assemble per-flow state from packet records + summaries.
+  TR-FX-2 At checkpoints (config, SRC {8,16,32} and flow end) build:
+          flow vector (feature order = features table schema version),
+          sequence tensor [N x channels], context vector.
+  TR-FX-3 Same code path offline (datasets/PCAP) and online -> no
+          train/serve skew. Offline PCAP reader produces identical records.
+  TR-FX-4 feature_hash = SHA-256 of canonical float32 bytes + schema ver.
+  TR-FX-5 Identity features (IP/port) never enter model input; unit test.
+
+4.4 Models (brain/models)
+  TR-M-1 GBDT: LightGBM and XGBoost trained; deployed one is Treelite-
+         compiled for inference; TreeSHAP via shap.TreeExplainer on the
+         original booster (exact).
+  TR-M-2 EBM: interpret ExplainableBoostingClassifier; per-term
+         contributions via eval_terms / explain_local; pairwise terms
+         mapped to groups by splitting contribution equally across member
+         features' groups [PROPOSED - document in spec as embodiment].
+  TR-M-3 CfC: ncps.torch CfC with AutoNCP wiring; inputs per step [size,
+         direction, flag bits, delta-t]; timespans = delta-t; static
+         context concatenated at readout. IG with ig_steps (config, SRC ~16)
+         batched over decisions; baseline = zero/neutral sequence
+         [PROPOSED]; aggregate |time x channel| -> channel -> group.
+  TR-M-4 Ensemble probability: calibrated (isotonic/temperature on val)
+         [PROPOSED method]; combination weights fitted on validation.
+  TR-M-5 Model loading verifies file SHA-256 against model_artifacts row;
+         mismatch -> refuse to start.
+
+4.5 ECS engine (brain/ecs)
+  TR-E-1 Inputs: 3 group-attribution vectors (length 14).
+  TR-E-2 top-k by |value|; J_k = |Ti ∩ Tj| / |Ti ∪ Tj|; signAgree = share
+         of groups in Ti ∩ Tj with equal sign (define 0 if intersection
+         empty [PROPOSED]); A_ij = alpha*J_k + (1-alpha)*signAgree;
+         ECS = mean of the 3 pairs.
+  TR-E-3 k, alpha from active config_version ([LEARNED] via grid search on
+         validation maximizing separation of correct vs wrong decisions
+         [PROPOSED objective - confirm]).
+  TR-E-4 Pure function, vectorised, unit-tested with hand-computed cases.
+
+4.6 Conformal + ACI + decision (brain/conformal, brain/decision)
+  TR-C-1 Mondrian split conformal with nonconformity 1 - p_ens(y); per
+         class quantile at level 1 - alpha_t.
+  TR-C-2 ACI per class: alpha_{t+1} = alpha_t + gamma*(alpha_target - err_t);
+         err_t computed when a delayed label arrives; clip alpha_t to [0,1].
+  TR-C-3 Decision table implemented as an ordered list of predicates
+         (first match wins), with row ids R1..R7 stored on the decision:
+           R1 E < tau_lo                        -> QUARANTINE + ADV
+           R2 S empty                           -> QUARANTINE
+           R3 S has benign AND attack           -> QUARANTINE
+           R4 S only attack, E >= tau_hi        -> BLOCK
+           R5 S only benign, E >= tau_hi        -> ALLOW
+           R6 S only attack, tau_lo<=E<tau_hi   -> QUARANTINE
+           R7 S only benign, tau_lo<=E<tau_hi   -> ALLOW + shadow-log
+         (R1 evaluated first because SRC says "any S".)
+  TR-C-4 Policy mapping to kernel action:
+           BLOCK -> DROP; ALLOW -> PASS;
+           QUARANTINE -> RATE_LIMIT (rate/burst from config) + ticket;
+           fail-closed vs fail-open-with-rate-limit governs what happens when
+           the brain is unavailable or a decision times out [interpretation
+           PROPOSED - confirm with team].
+  TR-C-5 tau_lo, tau_hi [LEARNED] to meet fpr_budget on validation.
+
+4.7 Rule compiler (brain/rules)
+  TR-R-1 Trigger: periodic or when count of BLOCK/QUARANTINE in window
+         exceeds config threshold.
+  TR-R-2 Cluster top-attribution vectors (e.g. HDBSCAN/agglomerative on
+         group vectors [PROPOSED]).
+  TR-R-3 Distil: shallow DecisionTree / rule list fitted on replay buffer
+         (real recent traffic) with targets = full-model decisions, feature
+         set restricted to kernel_realizable ∩ top-attributed groups.
+  TR-R-4 Convert tree path(s) to conjunction predicates; validate against
+         safety allow-list; ensure predicate count <= MAX_PRED.
+  TR-R-5 Fidelity: agreement with model and FPR on held-out recent benign;
+         thresholds from config ([LEARNED]/policy). Fail -> FIDELITY_FAILED.
+  TR-R-6 Certificate JSON (canonical) signed with Ed25519 (TPM-sealed key).
+  TR-R-7 Canary: stage in kernel LOG_ONLY for canary_seconds; compare
+         canary_counters with model decisions over same window.
+  TR-R-8 Promote: STAGE_RULESET + FLIP_ACTIVE; extend new ruleset hash into
+         PCR; TTL set; FP monitor (FP indicator = rule-matched flows the
+         model/admin judge benign) -> above limit -> automatic rollback
+         (re-stage previous ruleset + flip).
+  TR-R-9 Provenance rows written for all originating decisions.
+
+4.8 Ledger + TPM (brain/ledger)
+  TR-L-1 Single writer task appends entries in order; seq gapless.
+  TR-L-2 Canonical JSON (RFC 8785 [PROPOSED]); entry_hash =
+         SHA-256(prev_hash || canon).
+  TR-L-3 Batch when ledger_batch_size reached or max seconds elapsed;
+         Merkle tree (SHA-256, duplicate-last for odd) [PROPOSED]; root
+         signed with Ed25519.
+  TR-L-4 TPM: swtpm via TCTI; Ed25519 private key stored sealed to TPM
+         (TPM 2.0 has no native Ed25519 in most stacks -> seal the key blob
+         to PCR policy and unseal into memory at start [PROPOSED; document
+         honestly]). Model/ruleset/config SHA-256 extended into chosen PCR
+         (index from config). Quote over that PCR with nonce = batch root;
+         stored with batch.
+  TR-L-5 Verifier CLI scripts/verify_ledger.py: recompute chain, Merkle
+         roots, signatures, replay pcr_events vs quote; output first bad
+         seq + kind; exit code non-zero on failure. Measured verify time.
+
+4.9 Adversarial (brain/adversarial)
+  TR-A-1 ECS collapse = ECS < tau_lo (and optional drop vs flow history).
+  TR-A-2 Local Lipschitz: sample M protocol-constrained tiny perturbations
+         (realizable, valid ranges), max ||Δattr|| / ||Δx||; async, not on
+         every decision unless cheap enough [MEASURED decision].
+  TR-A-3 Offline LIME/KernelSHAP vs hot-path disagreement (on demand +
+         sampled background job).
+  TR-A-4 OOD score from conformal (empty set / min nonconformity).
+  TR-A-5 Attack harness: Slack-style scaffolding against offline LIME;
+         low-and-slow; padding.
+
+4.10 Drift (brain/drift)
+  TR-D-1 river ADWIN per stream (ensemble score; each group's attribution
+         mass); on detection -> drift_events, recalibrate conformal from
+         recent labelled window, enqueue retrain.
+
+4.11 Narrator (narrator worker)
+  TR-N-1 Consumes gw:narrate; input JSON {decision, class, ecs, conformal
+         set, top-k groups with signed values, rule text}.
+  TR-N-2 Prompt asks for 2 sentences using only given names/numbers.
+  TR-N-3 Verifier: tokenise numbers and group/feature names in output;
+         every one must exist in input (numbers matched after formatting
+         normalisation); otherwise use deterministic template.
+  TR-N-4 Timeout -> template. Never blocks decisions.
+
+------------------------------------------------------------------------------
+5. INTERFACES
+------------------------------------------------------------------------------
+5.1 Agent <-> Brain (Unix socket) [SRC: Unix socket / shared ring]
+  Up:   PACKET_RECORD, FLOW_SUMMARY, CANARY_COUNTS, ENTRY_EXPIRED, HELLO
+        (realizable feature list, capacities, enforcement path)
+  Down: commands in TR-AG-3; each with op_id; ACK/NACK {op_id, latency_us,
+        error}
+5.2 REST API (FastAPI) [PROPOSED paths]
+  GET  /api/meta                 classes, groups, active config (k, alpha,
+                                 tau_lo, tau_hi, checkpoints), env badges
+  GET  /api/flows?filters        live/historic flows
+  GET  /api/decisions/{id}       full why payload
+  GET  /api/decisions/{id}/packets
+  POST /api/decisions/{id}/offline-explain   {method}
+  POST /api/whatif               {decision_id, changes}
+  GET  /api/review               tickets
+  POST /api/review/{id}/verdict  {class_id, action, scope, notes}
+  GET  /api/rules?status
+  GET  /api/rules/{id}
+  POST /api/rules/{id}/accept | /reject | /expire
+  GET  /api/audit/decisions
+  POST /api/audit/verify         {from_seq, to_seq}
+  GET  /api/audit/attestation
+  POST /api/audit/export         {filter}
+  GET  /api/models, /api/drift, /api/experiments
+  POST /api/demo/attack          {scenario, action:start|stop}
+  POST /api/demo/tamper          (DEMO role, confirmation token)
+  POST /api/policy               {mode}
+  POST /api/auth/login, /logout
+5.3 WebSocket  /ws  channels: decisions, flows, rules, alerts, review
+  Message: {channel, stream_id, payload}; client sends {subscribe:[...],
+  resume_from}.
+5.4 Demo attack control: api -> docker exec into attacker container via
+  Docker socket is risky; prefer a tiny control daemon in attacker
+  container listening on mgmt-net with an allow-listed scenario catalogue
+  [PROPOSED]. Commands defined in config, not free-form.
+
+------------------------------------------------------------------------------
+6. CONFIGURATION (config/glasswall.yaml) - single source
+------------------------------------------------------------------------------
+  datapath: {interfaces, seq_len_n: 32, max_rules, max_pred, map sizes,
+             src_windows: [1m,10m,1h], enforcement_preference:
+             [xdp_generic, tc, nft]}
+  safety_allowlist: [...]
+  features: {schema_version, groups file: config/feature_groups.yaml}
+  models:   {active_model_set_id}
+  ecs:      {k: from_config_version, alpha: from_config_version}
+  conformal:{alpha_target, gamma, mondrian: true}
+  decision: {tau_lo, tau_hi (from config_version), fpr_budget, policy,
+             checkpoints: [8,16,32]}
+  quarantine: {rate_pps, burst}
+  rules:    {trigger, max_depth, fidelity thresholds, canary_seconds,
+             ttl_seconds, rollback_fp_limit}
+  ledger:   {batch_size, batch_max_seconds, pcr_index, tcti}
+  drift:    {adwin_delta}
+  narrator: {endpoint, model, timeout_ms}
+  [LEARNED] keys must be null in the YAML template and filled by the
+  calibration script that writes a config_version row (with run id).
+  Startup fails if any [LEARNED] key is null in production mode.
+
+------------------------------------------------------------------------------
+7. PERFORMANCE & MEASUREMENT
+------------------------------------------------------------------------------
+  - Instrument: per-stage timings (fx, gbdt, ebm, cfc+ig, ecs, conformal,
+    enforcement write, ledger append) -> histograms -> p50/p99.
+  - E4 harness: same host/container, compare XDP drop vs user-space drop
+    (e.g. Python/Go socket filter or nfqueue [PROPOSED]); iperf3 + hping3
+    load; report pps/latency with environment label.
+  - Time-to-block: attack start timestamp (attack_runs) vs first DROP for
+    that source.
+  - No target numbers committed before Week-1 baseline.
+
+------------------------------------------------------------------------------
+8. SECURITY REQUIREMENTS
+------------------------------------------------------------------------------
+  - Private repo; .gitignore data/, models/, evidence raw PCAPs, keys.
+  - Secrets via .env (not committed); Postgres roles: app (INSERT/SELECT on
+    ledger), admin (migrations).
+  - API auth: session cookie (httpOnly, SameSite=strict) + argon2 password
+    hashes; RBAC per ui_ux_requirements.txt [PROPOSED].
+  - API bound to localhost by default.
+  - Safety allow-list enforced in kernel, agent, compiler and API.
+  - Narrator local; no outbound network required at runtime.
+
+------------------------------------------------------------------------------
+9. TESTING REQUIREMENTS
+------------------------------------------------------------------------------
+  Unit: ECS math, decision table rows R1-R7, ACI update, Merkle/hash chain,
+        canonical JSON, narrator verifier, realizability checker, feature
+        hashing, identity-feature exclusion.
+  Integration: compose up -> scripted nmap -> BLOCK -> rule -> canary ->
+        promote -> next scan dropped by kernel rule (asserted via counters).
+  Kernel: BPF prog test_run (BPF_PROG_TEST_RUN) with crafted packets for
+        each lookup order case and atomic swap under load.
+  Ledger: tamper tests edit/delete/reorder -> 100% detection (E5).
+  ML: leakage tests (temporal ordering, no duplicate across splits).
+  CI [PROPOSED]: private runner or local `make test`; no public CI before
+        filing.
+
+------------------------------------------------------------------------------
+10. KNOWN TECHNICAL RISKS
+------------------------------------------------------------------------------
+  - xdpgeneric on veth may behave differently on WSL2 -> fallbacks, record.
+  - BPF verifier limits on rule loops -> keep MAX_PRED small; bpf_loop.
+  - Ed25519 + TPM: key sealing approach must be described accurately.
+  - CfC IG latency on CPU -> batch, measure; if too slow, run CfC
+    attribution at checkpoints only (still hot path per checkpoint).
+  - Dataset size on Windows disk -> Parquet, sampling, one PCAP day at a
+    time.
+==============================================================================
+END TRD
+==============================================================================
