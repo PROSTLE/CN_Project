@@ -1,0 +1,214 @@
+==============================================================================
+GLASSWALL - IMPLEMENTATION PLAN (5 weeks + Week 0, team of 4)      v1.0
+Based on ideation v3 sections 11 and 15. [SRC] / [PROPOSED] tags as before.
+CONFIDENTIAL. Private repo only.
+==============================================================================
+
+------------------------------------------------------------------------------
+0. TEAM & OWNERSHIP [SRC]
+------------------------------------------------------------------------------
+  M1 ML core & experiments        (data pipeline, models, conformal, P1-P5)
+  M2 Explainability/ECS/adversarial (groups, attributions, ECS, Inv 5, E1, E6)
+  M3 Datapath/enforcement/ledger/TPM (XDP, agent, rule enforcement, E4, E5)
+  M4 Frontend/narrator/demo        (API, React console, narrator, demo)
+  Lead: claims document, invention log, E1-E6 table.
+  Rule compiler (Inv 3, E3) is shared: M2 distillation + M3 kernel side.
+
+------------------------------------------------------------------------------
+1. REPOSITORY LAYOUT [PROPOSED]
+------------------------------------------------------------------------------
+  glasswall/
+    README.md  (internal only)   CONFIDENTIAL.md   INVENTION_LOG.md
+    Makefile                     .env.example      .gitignore
+    config/
+      glasswall.yaml             feature_groups.yaml   features.yaml
+      scenarios.yaml             (allow-listed attack/benign commands)
+    docker/
+      compose.yml
+      attacker/Dockerfile  attacker/control_daemon.py
+      victim/Dockerfile    victim/(nginx, sshd, vsftpd, dns conf)
+      gateway/Dockerfile   gateway/entrypoint.sh
+      swtpm/Dockerfile     narrator/(Modelfile)
+    datapath/
+      bpf/glasswall.bpf.c  bpf/maps.h  bpf/config_gen.h (generated)
+      cmd/agent/main.go    internal/{loader,maps,ringbuf,ipc,reaper,nft}/
+      tools/gen_config.go  tests/ (BPF_PROG_TEST_RUN)
+    brain/glasswall_brain/
+      ipc/ features/ models/ explain/ grouping/ ecs/ conformal/ decision/
+      enforcement/ rules/ ledger/ tpm/ adversarial/ drift/ narrator/
+      persistence/ main.py
+    ml/
+      data/ (download, pcap_extract, lab_ingest, clean, splits)
+      train/ (gbdt, ebm, cfc, baselines, ablations, calibrate)
+      eval/ (metrics, explanation_quality, cross_dataset)
+      experiments/ (e1..e6 .py)
+    api/app/ (main, routers/, ws, auth, schemas, services/)
+    ui/ (Vite React TS)
+    db/migrations/ (Alembic)
+    scripts/ (verify_ledger.py, activate_model_set.py, calibrate.py,
+              tamper_demo.py, check_env.sh)
+    tests/ (unit, integration, e2e)
+    evidence/ (gitignored raw; summaries committed)
+    docs/ (these .txt files)
+
+------------------------------------------------------------------------------
+2. WEEK 0 (now, parallel) [SRC]
+------------------------------------------------------------------------------
+  Lead:
+   [ ] Contact VIT IPR cell / registered patent agent; bring PRD sec 12 +
+       ideation sec 13.
+   [ ] Prior-art search (Google Patents, Espacenet, InPASS, IEEE, arXiv)
+       using SRC keyword list; claim chart rows A..L x 10-15 documents.
+   [ ] Confidentiality note signed by teammates; private repo created.
+   [ ] INVENTION_LOG.md started (date, who, what, commit).
+  Exit: claim chart v1, consult booked, repo private.
+
+------------------------------------------------------------------------------
+3. WEEK 1 - Testbed + datapath skeleton + data pipeline [SRC]
+------------------------------------------------------------------------------
+  M3:
+   [ ] compose.yml with attacker/victim/gateway/redis/postgres/swtpm; nets
+       attacker-net, victim-net, mgmt-net; routes via gateway.
+   [ ] scripts/check_env.sh: bpffs mount, btf presence, kernel release.
+   [ ] Trivial XDP prog (count + PASS) attached xdpgeneric on both veths.
+       If fails -> tc clsact -> nft. Record path in enforcement_path_log.
+   [ ] Hard-coded-verdict test map: prove DROP, PASS, RATE_LIMIT (token
+       bucket), TTL expiry.
+   [ ] Rule arrays A/B + active index; atomic swap under iperf3 load; count
+       packet loss during swap (expect none) -> first E4 numbers.
+   [ ] safety_allow map loaded from config.
+   [ ] Ringbuf packet_record for first N packets; agent prints/forwards.
+  M1:
+   [ ] Dataset download scripts (start sampled subsets); label maps.
+   [ ] Cleaning: dedupe, constant/inf removal, identity feature removal.
+   [ ] Temporal split manifests; cross-dataset NF-v2 split.
+   [ ] Baselines GBDT (LightGBM, XGBoost), RF, MLP; metrics P3-P5 harness;
+       FPR@fixed recall.
+  M2:
+   [ ] config/feature_groups.yaml (G1-G14) + features.yaml mapping every
+       feature to a group + kernel_realizable flag.
+   [ ] TreeSHAP -> group aggregation.
+  M4:
+   [ ] DB migrations for core tables (database_schema.txt 2-5, 7).
+   [ ] FastAPI skeleton: /api/meta, /health, WS echo; React skeleton with
+       nav + top bar badges.
+  Exit criteria: packets traverse gateway; XDP drop/pass/rate-limit proven;
+  swap measured; baseline metrics table with temporal split exists.
+
+------------------------------------------------------------------------------
+4. WEEK 2 - Brain: EBM, CfC, ECS, conformal, tri-state (E1, E2) [SRC]
+------------------------------------------------------------------------------
+  M1:
+   [ ] PCAP day extraction -> first-32 sequences (same FX code as online).
+   [ ] Lab traffic capture + labels by construction (attack_runs).
+   [ ] EBM training; CfC/NCP training (ncps); ablations LSTM/GRU/1D-CNN/
+       small Transformer; accuracy-per-parameter + latency table.
+   [ ] Ensemble calibration; Mondrian conformal (MAPIE) + ACI updater.
+  M2:
+   [ ] EBM term -> group mapping; CfC IG (ig_steps) -> channel -> group.
+   [ ] ECS module + unit tests; grid search k, alpha on val ->
+       config_version.
+   [ ] tau_lo/tau_hi learning to meet fpr_budget -> config_version.
+   [ ] Decision table R1..R7 + tests.
+   [ ] E1 experiment script + E2 (drifting stream, delayed labels).
+  M3:
+   [ ] Agent <-> brain Unix socket protocol (both directions) + acks.
+   [ ] Flow/src verdict writes from brain with TTL; quarantine rate limit.
+   [ ] Kernel counters for all realizable features; HELLO publishes list.
+  M4:
+   [ ] Live table over WS; Why? drawer v1 (3 waterfalls, ECS, set).
+  Exit: end-to-end lab flow -> decision in kernel; E1, E2 first tables;
+  metrics table locked [SRC].
+
+------------------------------------------------------------------------------
+5. WEEK 3 - Rule compiler, ledger + TPM, adversarial (E3, E5, E6) [SRC]
+------------------------------------------------------------------------------
+  M2 + M3 (rule compiler):
+   [ ] Replay buffer writer (recent real traffic, Parquet windows).
+   [ ] Clustering + distillation restricted to realizable features.
+   [ ] Predicate encoding -> kernel rule struct; LOG_ONLY mode + canary
+       counters.
+   [ ] Fidelity check + signed certificate; canary evaluator; promotion via
+       atomic swap; TTL; FP monitor; automatic rollback; provenance.
+   [ ] E3: certified vs uncertified; canary-then-promote vs direct.
+  M3 (ledger/TPM):
+   [ ] Hash chain writer, Merkle batches, Ed25519 signing.
+   [ ] swtpm: key sealing, PCR extend for model/ruleset/config, quote.
+   [ ] verify_ledger.py; tamper tests -> E5.
+  M2 (adversarial):
+   [ ] Lipschitz probe, offline LIME/KernelSHAP job, disagreement metric,
+       OOD score; Slack-style attack reproduction; low-and-slow, padding.
+   [ ] E6.
+  M4:
+   [ ] Rule studio, review queue with verdict -> labels -> ACI.
+  Exit: D2, D3, D4, D5 demo steps work individually.
+
+------------------------------------------------------------------------------
+6. WEEK 4 - Console complete, narrator, human study, E2E demo [SRC]
+------------------------------------------------------------------------------
+  M4:
+   [ ] Audit page (search, verify, TPM panel, signed export JSON/PDF).
+   [ ] What-if panel (DiCE, realizable only).
+   [ ] Models & drift page; experiments page (reads experiment_runs).
+   [ ] Demo page: toggles via attacker control daemon; checklist D1-D6;
+       tamper button.
+   [ ] Narrator worker (Ollama Qwen3) + verifier + template fallback.
+  M1:
+   [ ] ADWIN drift -> recalibration + retrain queue.
+   [ ] Cross-dataset results (P2) final.
+  M2:
+   [ ] Explanation quality: deletion/insertion AUC, stability, sparsity.
+   [ ] Human study (8-12 volunteers) with/without explanations.
+  All: full demo run end-to-end; fix.
+  Exit: 6-minute demo passes twice in a row.
+
+------------------------------------------------------------------------------
+7. WEEK 5 - Rehearsal, report, patent inputs, buffer [SRC]
+------------------------------------------------------------------------------
+   [ ] Rehearse demo; record a backup video (keep private).
+   [ ] Report/paper draft (do not submit externally before filing).
+   [ ] Patent spec inputs: figures 1-7, worked example with real lab
+       numbers, E1-E6 tables, embodiments (XDP/tc/nft; HW TPM/swtpm;
+       alternative models; alternative consensus formulas).
+   [ ] Honest limitations slide.
+   [ ] Buffer for failures.
+
+------------------------------------------------------------------------------
+8. CUT ORDER & NEVER-CUT [SRC]
+------------------------------------------------------------------------------
+  Cut first -> last: Transformer/Mamba -> Mininet -> narrator polish ->
+  human study size.
+  NEVER cut: ECS, tri-state + conformal, rule compiler with canary/rollback,
+  in-kernel enforcement, ledger, temporal + cross-dataset results.
+
+------------------------------------------------------------------------------
+9. DEFINITION OF DONE (per feature)
+------------------------------------------------------------------------------
+  - Code + unit tests + config keys documented in glasswall.yaml.
+  - No hardcoded learned values; no fabricated metrics.
+  - Decision-affecting changes write to ledger.
+  - Experiment produces experiment_runs row + evidence folder.
+  - INVENTION_LOG.md entry if it touches Inventions 1-5.
+
+------------------------------------------------------------------------------
+10. RISK RESPONSE
+------------------------------------------------------------------------------
+  XDP generic fails on veth -> tc -> nft (claims stay generic).
+  CfC underperforms -> report honestly; keep as temporal/independent source.
+  IG too slow -> checkpoint-only attribution, batching; measure.
+  TPM Ed25519 limitation -> sealed-key approach, documented.
+  Dataset disk pressure -> sampling + Parquet + one PCAP day at a time.
+  Time slip -> follow cut order.
+
+------------------------------------------------------------------------------
+11. FIRST 7 DAYS CHECKLIST [SRC section 15]
+------------------------------------------------------------------------------
+  Day 1    private repo; invention log; share ideation only under NDA note.
+  Day 1-2  compose up attacker/victim/gateway; trivial XDP; record path.
+  Day 2-4  prior-art + claim chart; book patent agent / VIT IPR.
+  Day 3-7  data pipeline + temporal splits + GBDT/EBM baselines + TreeSHAP;
+           first ECS prototype on group attributions.
+  Then     file provisional before any external submission of details.
+==============================================================================
+END IMPLEMENTATION PLAN
+==============================================================================
