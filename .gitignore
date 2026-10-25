@@ -1,0 +1,16 @@
+# dependencies / build output
+node_modules/
+ui/dist/
+datapath/build/
+
+# python
+__pycache__/
+*.pyc
+.pytest_cache/
+.venv/
+venv/
+
+# runtime leftovers
+hydra.restore
+wget-log
+*.log
