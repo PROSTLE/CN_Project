@@ -1,0 +1,190 @@
+==============================================================================
+GLASSWALL - TECH FLOW (data, control and pipeline flows)           v1.0
+Tags: [SRC] ideation v3, [PROPOSED] engineering choice, [LEARNED] fitted.
+CONFIDENTIAL.
+==============================================================================
+
+------------------------------------------------------------------------------
+1. HOT PATH: PACKET -> DECISION -> ENFORCEMENT (online)
+------------------------------------------------------------------------------
+ Step  Where              What
+ 1     NIC/veth (gateway) packet arrives on attacker-side or victim-side veth
+ 2     XDP program        parse Eth/IPv4/L4 (bounds-checked)
+ 3     XDP                safety_allow hit? -> XDP_PASS (stop)
+ 4     XDP                update flow_stats + src_stats (flags, sizes,
+                          timestamps, port bitmap/bloom, host sketch)
+ 5     XDP                lookup flow_verdict -> src_verdict -> prefix_list ->
+                          rules[active]; first non-expired hit decides:
+                          PASS / DROP / RATE_LIMIT(token bucket)
+                          rule in LOG_ONLY -> canary_counters++ and continue
+ 6     XDP                if pkt_index < N(32): ringbuf packet_record
+                          periodic/FIN/RST/idle: ringbuf flow_summary
+ 7     Agent (Go)         ringbuf reader -> Unix socket -> brain
+ 8     Brain FX           per-flow buffer; at pkt 8/16/32/end build
+                          flow vec + seq tensor + context vec; feature_hash
+ 9     Brain models       GBDT (Treelite) probs; TreeSHAP; EBM probs+terms;
+                          CfC probs + IG(ig_steps) - batched across flows
+                          arriving in the same micro-batch window [PROPOSED]
+ 10    Brain grouping     feature/time-step attributions -> G1..G14 per source
+ 11    Brain ECS          top-k per source -> pairwise A_ij -> ECS
+ 12    Brain conformal    calibrated ensemble -> nonconformity -> Mondrian
+                          set S using current per-class alpha_t
+ 13    Brain decision     table R1..R7 -> action (+adv flag)
+ 14    Brain enforcement  command to agent: SET_FLOW_VERDICT / SET_SRC_VERDICT
+                          with TTL; QUARANTINE -> RATE_LIMIT params; ack
+ 15    Brain persistence  decisions + attributions + ecs_pairs +
+                          packet_attributions -> Postgres (batched insert)
+ 16    Ledger writer      canonical record -> hash chain append
+ 17    Events             XADD gw:decisions (+ gw:alerts if adv/quarantine)
+ 18    API                Redis consumer -> WebSocket push -> UI
+ 19    Async              gw:narrate -> narrator; review ticket creation;
+                          adversarial extra checks; sampled offline LIME
+ Timing: steps 8-14 measured per stage; ledger/DB/narrator off the
+ enforcement critical path (enforcement written BEFORE persistence).
+
+------------------------------------------------------------------------------
+2. OFFLINE DATA PIPELINE (training data)  [SRC section 7]
+------------------------------------------------------------------------------
+ 2.1 Flow-CSV datasets (NF-*-v2, CIC-IDS2017 corrected, UNSW-NB15, ...)
+     download -> load with Polars/DuckDB -> label map to class_labels ->
+     drop duplicates -> drop constant/inf columns -> remove identity
+     features (IP/port) -> map columns to features table (group, realizable)
+     -> Parquet processed/.
+ 2.2 PCAP days (one at a time; e.g. CIC-IDS2017 Wed DoS, Fri PortScan/DDoS)
+     PCAP -> offline reader producing the SAME packet_record format as the
+     XDP ringbuf -> same FX code -> first-32 sequences + flow features ->
+     join labels (by flow key + time) -> Parquet -> DELETE PCAP.
+ 2.3 Lab traffic (own labelled data)
+     /demo or scripts start scenario in attacker ctr -> attack_runs row with
+     window + class -> gateway logs records -> FX -> labels by construction
+     (src container + time window) -> Parquet.
+ 2.4 Flow-only datasets for CfC: per-source sequence of flow records with
+     irregular start times (delta-t = inter-flow start gap).
+ 2.5 Splits: TEMPORAL (train earlier days, test later), no shuffle; class
+     weights computed inside training fold only; CROSS_DATASET (train A,
+     test B with NF-v2 common schema). Manifests saved, split rows in DB.
+
+------------------------------------------------------------------------------
+3. TRAINING & CALIBRATION PIPELINE
+------------------------------------------------------------------------------
+  train split ---------> GBDT (LightGBM, XGBoost), EBM, CfC/NCP, RF, MLP,
+                         ablations (LSTM, GRU, 1D-CNN, small Transformer)
+  val split -----------> ensemble weights + probability calibration
+                       -> attributions on val -> grid (k, alpha) [LEARNED]
+                       -> tau_lo, tau_hi to meet fpr_budget [LEARNED]
+                       -> rule fidelity thresholds [LEARNED/policy]
+  calibration split ---> Mondrian conformal scores per class (MAPIE)
+  test split ----------> P1-P5 metrics, explanation quality, E1
+  Outputs: model_artifacts (+sha256), model_set, calibration_set,
+           config_version (with source_run_id), experiment_runs.
+  Activation: admin/CLI activates model_set + config_version -> agent/brain
+  reload -> SHA-256s extended into PCR -> pcr_events -> ledger notes it.
+
+------------------------------------------------------------------------------
+4. FEEDBACK & DRIFT LOOP
+------------------------------------------------------------------------------
+  labels (admin verdict / honeypot / signature / replay, delayed)
+     -> gw:labels -> ACI updater: err_t = 1[y not in S_t] per class
+        -> alpha_{t+1} = alpha_t + gamma*(alpha_target - err_t) -> aci_state
+     -> retrain buffer
+  ADWIN on score stream and per-group attribution streams
+     -> drift_event -> recalibrate conformal on recent labelled window
+     -> retrain_job queued -> new model_set (candidate) -> evaluation ->
+        manual activation (never silent auto-swap of models) [PROPOSED]
+
+------------------------------------------------------------------------------
+5. RULE COMPILER PIPELINE  [SRC Invention 3]
+------------------------------------------------------------------------------
+  trigger (timer or BLOCK/QUARANTINE volume)
+   1 select recent BLOCK/QUARANTINE decisions (window)
+   2 cluster by group-attribution vectors
+   3 per cluster: candidate groups = top-attributed groups ∩ realizable
+   4 distil shallow tree / rule list on replay buffer (real recent benign +
+     attack); target = full-model decision; features = realizable only
+   5 tree path -> predicates (feature, op, threshold); check MAX_PRED and
+     safety allow-list
+   6 fidelity: agreement + FPR on held-out recent benign; pass/fail vs
+     config thresholds -> certificate JSON -> Ed25519 signature
+   7 canary: STAGE_RULESET with rule in LOG_ONLY -> FLIP_ACTIVE -> wait T ->
+     READ_CANARY -> compare with brain decisions for same flows -> pass/fail
+   8 promote: STAGE_RULESET with rule ENFORCE -> FLIP_ACTIVE (atomic) ->
+     ruleset sha256 -> PCR extend -> ttl set
+   9 monitor: rule-matched flows whose model/admin label is benign -> FP
+     indicator -> > limit -> rollback (stage previous ruleset, flip)
+  10 provenance rows, ledger entries for every transition, gw:rules events
+
+------------------------------------------------------------------------------
+6. LEDGER / TPM FLOW
+------------------------------------------------------------------------------
+  boot:
+    swtpm up -> gateway TCTI -> create/load primary -> unseal Ed25519 key
+    (policy bound to PCR state at boot) -> extend model/ruleset/config
+    hashes -> record pcr_events
+  runtime:
+    decision record -> canon JSON -> entry_hash chain -> INSERT
+    batch trigger -> Merkle root -> sign -> TPM2_Quote(PCR sel, nonce=root)
+    -> merkle_batches INSERT
+  verify (CLI / API):
+    load range -> recompute -> check prev links & seq continuity (DELETE /
+    REORDER) -> recompute entry hashes (EDIT) -> Merkle roots -> Ed25519
+    verify -> quote signature verify (TPM AK pub) -> replay pcr_events ->
+    compare PCR -> report.
+
+------------------------------------------------------------------------------
+7. ADVERSARIAL / AUDIT FLOW  [SRC Invention 5]
+------------------------------------------------------------------------------
+  per decision (cheap): ECS < tau_lo -> adv flag; OOD from empty S
+  async per flagged/sampled decision:
+    Lipschitz probe (protocol-constrained perturbations of realizable
+    features) -> instability score
+    offline LIME/KernelSHAP -> group attributions -> disagreement vs hot path
+  -> adversarial_signals row -> alert
+  Experiment harness E6: Slack-style scaffolded model attacking LIME path;
+  low-and-slow; padding -> detection rate with vs without ECS.
+
+------------------------------------------------------------------------------
+8. NARRATOR FLOW
+------------------------------------------------------------------------------
+  decision -> gw:narrate {decision_id}
+  worker: load structured JSON -> prompt (only names/numbers allowed) ->
+  Ollama Qwen3 -> output -> verifier (numbers & names ⊆ input) ->
+  pass: store final_text verified=true | fail/timeout: template text,
+  fallback_used=true -> WS push "narration ready".
+
+------------------------------------------------------------------------------
+9. UI DATA FLOW
+------------------------------------------------------------------------------
+  Browser -> GET /api/meta (classes, groups, config, env) once
+          -> WS /ws subscribe [decisions, alerts, rules, review]
+          -> GET /api/decisions/{id} on drawer open (full why payload)
+          -> POST actions (verdict/accept/reject/expire/policy) -> server
+             validates role + invariants -> agent command (if kernel) ->
+             ledger + ui_audit_log -> event back over WS -> UI updates.
+
+------------------------------------------------------------------------------
+10. EXPERIMENT FLOW (E1-E6)  [SRC section 8]
+------------------------------------------------------------------------------
+  make e1: replay test stream -> gated (ECS+conformal) vs ungated (argmax)
+           -> FPR at equal recall; % wrong decisions with low ECS.
+  make e2: drifting stream (temporal concat / dataset switch) with delayed
+           labels -> coverage over time vs alpha_target (static CP vs ACI).
+  make e3: compiled rules certified vs uncertified; canary-then-promote vs
+           direct -> FPR, agreement, rollback rate.
+  make e4: XDP drop vs user-space drop, same host/container -> latency,
+           throughput; env labelled WSL2.
+  make e5: tamper edit/delete/reorder N times -> detection %, quote verify,
+           verify time.
+  make e6: manipulation + evasion -> detection with vs without ECS.
+  Every run -> experiment_runs (seed, split, config sha, commit, env) +
+  evidence/<run_id>/ raw logs + tables/plots for patent spec.
+
+------------------------------------------------------------------------------
+11. STARTUP ORDER
+------------------------------------------------------------------------------
+  postgres, redis, swtpm -> migrations -> gateway (agent: load+attach,
+  allow-list; brain: verify model hashes, load active config (fail if
+  [LEARNED] missing), TPM unseal + PCR extend, connect agent) -> api ->
+  ui -> narrator -> victim -> attacker.
+==============================================================================
+END TECH FLOW
+==============================================================================
