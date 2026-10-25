@@ -1,0 +1,52 @@
+{
+  "gated": {
+    "benign_block_rate": 0.0,
+    "benign_quarantine_rate": 0.0125,
+    "attack_block_recall": 0.9615912208504801,
+    "attack_intercept_recall": 1.0,
+    "attack_quarantine_rate": 0.038408779149519894,
+    "n_benign": 1200,
+    "n_attack": 3645
+  },
+  "conformal_only": {
+    "benign_block_rate": 0.0,
+    "benign_quarantine_rate": 0.0125,
+    "attack_block_recall": 0.9813443072702333,
+    "attack_intercept_recall": 1.0,
+    "attack_quarantine_rate": 0.018655692729766804,
+    "n_benign": 1200,
+    "n_attack": 3645
+  },
+  "argmax": {
+    "benign_block_rate": 0.0008333333333333334,
+    "benign_quarantine_rate": 0.0,
+    "attack_block_recall": 1.0,
+    "attack_intercept_recall": 1.0,
+    "attack_quarantine_rate": 0.0,
+    "n_benign": 1200,
+    "n_attack": 3645
+  },
+  "argmax_threshold_at_gated_recall": {
+    "recall": 1.0,
+    "benign_flag_rate": 0.0008333333333333334,
+    "threshold": 0.7344997073380569
+  },
+  "wrong_decisions": {
+    "n_wrong": 4,
+    "n": 4845,
+    "caught_by_quarantine": 1.0,
+    "caught_by_low_ecs_R1": 0.0,
+    "caught_by_ecs_band_R6_R7": 0.0,
+    "caught_conformal_only": 1.0,
+    "ecs_mean_wrong": 0.75,
+    "ecs_mean_correct": 0.8933071679405081
+  },
+  "row_hist": {
+    "R4": 3505,
+    "R5": 1177,
+    "R2": 82,
+    "R6": 66,
+    "R7": 8,
+    "R1": 7
+  }
+}
