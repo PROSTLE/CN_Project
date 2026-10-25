@@ -1,0 +1,239 @@
+==============================================================================
+GLASSWALL - PROMPTS FOR CLAUDE CODE                                v1.0
+How to use: open Claude Code in the private repo root. Paste the MASTER
+PROMPT once at the start of each session, then paste ONE phase prompt at a
+time. Wait for the phase to finish and pass its checks before the next one.
+Keep these docs in docs/ inside the repo so Claude Code can read them.
+CONFIDENTIAL.
+==============================================================================
+
+##############################################################################
+MASTER PROMPT (paste first, every session)
+##############################################################################
+You are building GLASSWALL, an explainable AI firewall, in this private
+repository. The specification is in docs/:
+  prd.txt, trd.txt, database_schema.txt, ui_ux_requirements.txt,
+  design_flow.txt, tech_flow.txt, implementation_plan.txt.
+Read the docs relevant to the current phase before writing code. Where docs
+conflict, prd.txt > trd.txt > others; ask me instead of guessing.
+
+Environment: Windows 11 + Docker Desktop (WSL2). All Linux work happens in
+containers. The gateway container is privileged and loads eBPF. Do not
+assume native Linux on the host.
+
+HARD RULES
+1. No hardcoded learned values. k, alpha, tau_lo, tau_hi, fidelity
+   thresholds, canary duration, rollback limit, rate limits, ACI gamma and
+   alpha_target are read from config/glasswall.yaml or the active
+   config_versions row. [LEARNED] keys are null in the template and filled
+   only by scripts/calibrate.py from a validation run. Startup must fail
+   loudly if a required [LEARNED] value is missing.
+2. No fabricated results. Never write metric values, sample numbers or
+   "example" accuracies into code, UI, README or reports. UI shows empty
+   states when no data exists. Tests may use synthetic fixtures that are
+   clearly named as fixtures and never shown as results.
+3. No hallucinated APIs. Before using a library function (cilium/ebpf, ncps,
+   interpret, shap, mapie, river, tpm2-pytss, dice-ml), check its installed
+   version's real signature (help(), go doc, or the source in site-packages
+   / module cache). If unsure, say so and verify. Pin versions in lockfiles.
+4. Do not use raw IP addresses or ports as model features. Add a test that
+   enforces this.
+5. Hot path explainers are exact/deterministic only (TreeSHAP, EBM terms,
+   CfC integrated gradients). LIME/KernelSHAP are offline only.
+6. The LLM narrator is never in the decision path.
+7. The safety allow-list (from config) must be checked first in the kernel
+   and refused by agent, compiler and API.
+8. The datapath never sees a half-written rule set: write inactive array,
+   flip active index in one map update.
+9. Ledger tables are append-only (trigger + grants).
+10. Confidentiality: never push to a public remote, never create public
+    gists/pages, never paste internals into external services. Do not
+    commit data/, models/, keys or .env.
+11. Small, reviewable steps. After each step run the tests/commands that
+    prove it works and show me the real output. If something fails, report
+    the failure honestly; do not claim success.
+12. Label what you measured with its environment (WSL2, xdpgeneric/tc/nft,
+    swtpm). Never claim line rate.
+13. Match the repo layout in implementation_plan.txt section 1. Keep code
+    style consistent; type hints in Python, gofmt for Go, strict TS.
+14. When a design choice is not in the docs, pick the simplest option, mark
+    it with a "# PROPOSED:" comment, and list it in your summary.
+At the end of every phase: list files changed, commands run with results,
+open issues, and an INVENTION_LOG.md entry draft if Inventions 1-5 were
+touched (I will add names/dates).
+
+##############################################################################
+PHASE 1 - Repo scaffold + docker testbed
+##############################################################################
+Goal: implementation_plan.txt section 3 (M3 testbed parts) + repo layout.
+Tasks:
+ a) Create the repo layout (implementation_plan.txt sec 1) with README
+    (internal), .gitignore, .env.example, Makefile targets: up, down, logs,
+    check-env, test.
+ b) config/glasswall.yaml from trd.txt section 6 ([LEARNED] keys = null),
+    config/feature_groups.yaml with G1-G14 exactly as in database_schema.txt
+    2.1, config/scenarios.yaml listing allowed attacker/benign commands
+    (nmap scan, hping3 SYN flood, hydra SSH brute force, slowhttptest,
+    low-and-slow, iperf3, curl) - targets from compose service names.
+ c) docker/compose.yml: attacker, victim, gateway, redis, postgres, swtpm
+    with networks attacker-net, victim-net, mgmt-net; attacker and victim
+    route through gateway; gateway privileged, ip_forward=1, bpffs volume.
+ d) scripts/check_env.sh run inside gateway: mount bpffs, print kernel
+    release, BTF presence, bpftool availability.
+Verify: `make up`, `make check-env`, ping/curl from attacker to victim
+goes through gateway (show traceroute or counters). Report real output.
+
+##############################################################################
+PHASE 2 - XDP datapath + Go agent
+##############################################################################
+Goal: trd.txt 4.1, 4.2; database_schema.txt section 11.
+Tasks:
+ a) datapath/bpf/glasswall.bpf.c with the maps of schema sec 11; constants
+    from generated config_gen.h (tools/gen_config.go reads glasswall.yaml).
+ b) Lookup order: safety_allow -> flow_verdict -> src_verdict ->
+    prefix_list -> rules[active]; actions PASS/DROP/RATE_LIMIT; TTL;
+    LOG_ONLY canary counting; counters; ringbuf records for first N pkts.
+ c) Go agent (cilium/ebpf + bpf2go): attach xdpgeneric on both gateway
+    veths, fall back to tc clsact; record which worked; Unix socket server
+    with the command set in trd.txt TR-AG-3; reaper; HELLO message with
+    realizable feature list.
+ d) BPF_PROG_TEST_RUN tests for each lookup case + rate limit + swap.
+ e) Swap benchmark under iperf3 load: packets lost during flip (measured).
+Verify: tests pass; manual DROP of attacker source stops curl; RATE_LIMIT
+limits iperf3; numbers printed with environment label.
+
+##############################################################################
+PHASE 3 - Database + API skeleton
+##############################################################################
+Goal: database_schema.txt sections 1-9 via Alembic; FastAPI skeleton.
+Tasks: migrations incl. append-only triggers and grants; seed feature_groups
+and class_labels from config (not literals in migration where avoidable);
+api: /health, /api/meta (reads DB + active config), auth (argon2, session
+cookie, roles), WS /ws with Redis stream consumer.
+Verify: migration up/down; trigger blocks UPDATE on ledger_entries (test);
+/api/meta returns groups and nulls for unlearned config.
+
+##############################################################################
+PHASE 4 - Data pipeline + baselines
+##############################################################################
+Goal: tech_flow.txt section 2, PRD section 7, P1-P5 harness.
+Tasks: download scripts (do not commit data), label maps, cleaning (dedupe,
+constant/inf drop), identity-feature removal + test, features.yaml mapping
+each column to a group + kernel_realizable, temporal split + cross-dataset
+split manifests, LightGBM/XGBoost/RF/MLP training, metrics (per-class P/R/F1,
+macro-F1, PR-AUC, FPR at fixed recall), experiment_runs rows with seed,
+split, config sha, commit, env. Start with a sampled subset; ask me which
+dataset files I have downloaded before assuming paths.
+Verify: show the real metrics table produced; include the identity-feature
+ablation.
+
+##############################################################################
+PHASE 5 - Shared feature extractor (online == offline)
+##############################################################################
+Goal: trd.txt 4.3; PCAP reader that emits the same packet_record format as
+the ringbuf; checkpoint builder (8/16/32/end from config); feature_hash;
+lab traffic ingest with labels by construction (attack_runs).
+Verify: same PCAP replayed through gateway vs offline reader gives
+identical feature vectors (test with tolerance 0).
+
+##############################################################################
+PHASE 6 - EBM + CfC + group attributions
+##############################################################################
+Goal: trd.txt 4.4; PRD 5.3.
+Tasks: EBM training + term->group mapping; CfC/NCP (ncps) on sequences +
+context at readout; integrated gradients with ig_steps from config;
+per-time-step channel attributions -> groups; ablations LSTM/GRU/1D-CNN/
+small Transformer; latency + accuracy-per-parameter table. Model files
+registered with SHA-256.
+Verify: real tables; if CfC loses, say so plainly.
+
+##############################################################################
+PHASE 7 - ECS + conformal + ACI + tri-state decision (Inventions 1, 2)
+##############################################################################
+Goal: trd.txt 4.5, 4.6.
+Tasks: ECS pure function + hand-computed unit tests; calibrated ensemble;
+Mondrian conformal via MAPIE; ACI updater; decision table R1..R7 (first
+match, R1 first); scripts/calibrate.py grid-searches k, alpha and learns
+tau_lo/tau_hi for fpr_budget on validation, writes config_versions with
+source_run_id; brain main loop wiring agent -> FX -> models -> ECS -> CP ->
+decision -> enforcement -> persistence -> Redis.
+Experiments: ml/experiments/e1.py, e2.py.
+Verify: unit tests for every decision row; E1/E2 real outputs; end-to-end:
+nmap from attacker produces BLOCK in kernel (show agent ack + counters).
+
+##############################################################################
+PHASE 8 - Rule compiler (Invention 3)
+##############################################################################
+Goal: trd.txt 4.7; tech_flow.txt section 5; design_flow.txt section 4.
+Tasks: replay buffer; clustering; shallow-tree distillation on realizable
+features only (use the HELLO list from the agent); predicate encoding;
+safety check; fidelity + signed certificate; canary in LOG_ONLY; promotion
+via atomic swap; TTL; FP monitor; automatic rollback; provenance; all
+transitions to ledger and gw:rules. Experiment e3.py.
+Verify: scripted scan -> rule proposed -> canary pass -> promoted -> next
+scan dropped by the kernel rule (rule counter increments) -> forced FP
+triggers rollback. Show real logs.
+
+##############################################################################
+PHASE 9 - Ledger + TPM attestation (Invention 4)
+##############################################################################
+Goal: trd.txt 4.8; tech_flow.txt section 6.
+Tasks: canonical JSON, hash chain single writer, Merkle batches, Ed25519,
+swtpm via tpm2-pytss: seal key, PCR extend (model/ruleset/config), quote
+with nonce=root; pcr_events; scripts/verify_ledger.py; tamper tests;
+e5.py. Document truthfully how the Ed25519 key is protected by the TPM.
+Verify: edit/delete/reorder each detected; quote verifies; timing printed.
+
+##############################################################################
+PHASE 10 - Adversarial detection + drift (Invention 5)
+##############################################################################
+Goal: trd.txt 4.9, 4.10.
+Tasks: ECS collapse flag; Lipschitz probe (protocol-constrained); offline
+LIME/KernelSHAP jobs + disagreement; OOD score; Slack-style scaffolding
+attack on the offline LIME path; low-and-slow and padding scenarios; ADWIN
+drift -> recalibration + retrain queue; e6.py.
+Verify: real detection rates with vs without ECS.
+
+##############################################################################
+PHASE 11 - Admin console (React)
+##############################################################################
+Goal: ui_ux_requirements.txt fully; design_flow.txt sections 7-10.
+Tasks: pages /live, Why? drawer, /flows/:id, what-if, /review, /rules,
+/audit, /models, /experiments, /demo, /settings; WS live updates; RBAC;
+light/dark; responsive rules; acceptance criteria AC1-AC7. All domain
+values from /api/meta and API responses; no numbers in UI code.
+Verify: run the app, click through UJ1-UJ5, report what works and what
+does not.
+
+##############################################################################
+PHASE 12 - Narrator + counterfactuals
+##############################################################################
+Goal: trd.txt 4.11; PRD 5.10, 5.11.
+Tasks: narrator compose service (Ollama, Qwen3 small GGUF - ask me which
+size fits my CPU); worker; verifier (numbers and names subset of input);
+template fallback; DiCE counterfactuals limited to realizable features;
+/api/whatif sandbox.
+Verify: unit tests where the LLM output contains an invented number ->
+rejected -> template used.
+
+##############################################################################
+PHASE 13 - Demo hardening + evidence
+##############################################################################
+Goal: PRD section 10 (D1-D6); implementation_plan.txt weeks 4-5.
+Tasks: attacker control daemon (scenario catalogue only, mgmt-net);
+/demo checklist; tamper button (DEMO role, typed confirmation);
+make e1..e6 produce evidence/<run_id>/ tables and plots; experiments page
+reads them. Run the full demo twice and report timings and failures.
+
+##############################################################################
+QUICK PROMPTS
+##############################################################################
+- "Review the diff for hardcoded thresholds, fabricated numbers, identity
+   features, and missing ledger writes; list findings with file:line."
+- "Run all tests and the E2E scan scenario; report real output only."
+- "Update INVENTION_LOG.md draft for today's work (leave names for me)."
+- "Check that every [LEARNED] config key is null in the template and loaded
+   from config_versions at runtime."
+==============================================================================
+END PROMPTS
+==============================================================================
