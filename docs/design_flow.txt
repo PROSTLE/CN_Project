@@ -1,0 +1,227 @@
+==============================================================================
+GLASSWALL - DESIGN FLOW (user journeys, state machines, screen flows) v1.0
+Tags: [SRC] ideation v3, [PROPOSED] design choice.
+CONFIDENTIAL.
+==============================================================================
+
+------------------------------------------------------------------------------
+1. SYSTEM CONTEXT (who/what touches GLASSWALL)
+------------------------------------------------------------------------------
+
+   [Attacker ctr] --attacker-net--> [ GATEWAY: XDP datapath + agent + brain ]
+                                         |            --victim-net--> [Victim ctr]
+                                         |
+         mgmt-net: postgres, redis, swtpm, api+ui, narrator
+                                         |
+   Admin / Analyst / Auditor / Demo operator  <-- browser --> api+ui
+
+------------------------------------------------------------------------------
+2. DECISION LIFECYCLE STATE MACHINE (per flow)
+------------------------------------------------------------------------------
+  NEW (first packet seen; counters start; records to ring buffer)
+    |
+    | packet 8  -> checkpoint C8  -> decide (see 3)
+    | packet 16 -> checkpoint C16 -> re-decide (may escalate / relax)
+    | packet 32 -> checkpoint C32 -> re-decide
+    | flow end  -> final decision
+    v
+  States after each decision:
+    ALLOWED            kernel: no entry or PASS
+    ALLOWED_SHADOW     kernel: PASS; flagged in DB for shadow-log
+    BLOCKED            kernel: flow_verdict DROP (or src_verdict) with TTL
+    QUARANTINED        kernel: RATE_LIMIT token bucket; ticket OPEN
+    QUARANTINED_ADV    as above + adversarial flag + alert
+  Transitions:
+    QUARANTINED --admin verdict attack--> BLOCKED (+label, ACI update)
+    QUARANTINED --admin verdict benign--> ALLOWED (+label, ACI update)
+    BLOCKED/QUARANTINED --TTL expiry--> NEW behaviour (re-evaluated)
+    any --compiled rule matches in kernel--> handled by rule (logged with
+          rule_id; brain still decides & logs for canary/FP monitoring)
+  Every transition -> ledger entry.
+
+------------------------------------------------------------------------------
+3. DECISION FLOW (one checkpoint)  [SRC Inventions 1+2]
+------------------------------------------------------------------------------
+  features ready
+     -> GBDT probs + TreeSHAP  \
+     -> EBM probs + terms       }-> map to G1..G14 -> top-k each
+     -> CfC probs + IG         /
+     -> ECS = mean_pairs(alpha*J_k + (1-alpha)*signAgree)
+     -> ensemble calibrated probs -> Mondrian conformal set S (alpha_t)
+     -> decision table (first match):
+          E < tau_lo ...................... QUARANTINE + ADVERSARIAL
+          S = {} .......................... QUARANTINE (OOD)
+          S has benign & attack ........... QUARANTINE (ambiguous)
+          S attack-only & E >= tau_hi ..... BLOCK
+          S benign-only & E >= tau_hi ..... ALLOW
+          S attack-only & mid E ........... QUARANTINE
+          S benign-only & mid E ........... ALLOW + shadow-log
+     -> enforcement write (atomic map update)
+     -> ledger append -> redis event -> UI
+     -> async: narrator, adversarial extra checks, offline audit sample
+
+------------------------------------------------------------------------------
+4. RULE LIFECYCLE STATE MACHINE  [SRC Invention 3]
+------------------------------------------------------------------------------
+                 cluster + distil (realizable features only)
+                              |
+                          PROPOSED
+                     fidelity check on real replay buffer
+                     /                           \
+           FIDELITY_FAILED                  cert signed
+             (terminal,                         |
+              kept for audit)       admin Accept (or auto policy [PROPOSED])
+                                                |
+                                             CANARY  (kernel LOG_ONLY, T s)
+                                       /                      \
+                               CANARY_FAILED              criterion met
+                                                               |
+                                                  atomic swap  v
+                                                           PROMOTED
+                                     /              |                 \
+                    FP indicator > limit     TTL expires       admin Expire
+                              |                    |                  |
+                         ROLLED_BACK            EXPIRED            EXPIRED
+  Admin Reject possible from PROPOSED or CANARY -> REJECTED.
+  Each transition: rules.status update, gw:rules event, ledger entry, PCR
+  extend on every ruleset change.
+
+------------------------------------------------------------------------------
+5. REVIEW TICKET LIFECYCLE
+------------------------------------------------------------------------------
+  OPEN (created with QUARANTINE decision, includes attributions)
+   -> IN_REVIEW (assignee opens it)
+   -> RESOLVED (verdict) -> label row (ADMIN_VERDICT) -> ACI err_t ->
+      retrain queue -> kernel entry updated
+   -> AUTO_CLOSED (flow ended + TTL passed with no verdict) [PROPOSED];
+      still kept for audit and offline labelling.
+
+------------------------------------------------------------------------------
+6. LEDGER & ATTESTATION FLOW  [SRC Invention 4]
+------------------------------------------------------------------------------
+  decision -> canonical record -> entry_hash = H(prev || record) -> append
+  every B records or S seconds:
+     Merkle root over batch -> Ed25519 sign (key unsealed from TPM)
+     -> TPM quote over PCR (model/ruleset/config measurements), nonce=root
+     -> store batch {root, sig, quote, pcr}
+  Verify:
+     walk chain -> recompute hashes -> recompute roots -> check sigs ->
+     replay pcr_events -> compare with quoted PCR -> GREEN / RED(first bad)
+
+------------------------------------------------------------------------------
+7. USER JOURNEYS (screen-by-screen)
+------------------------------------------------------------------------------
+UJ1 Investigate a BLOCK (admin)
+  1 /live: red BLOCK row appears (toast if source new).
+  2 Click row -> Why? drawer.
+  3 Read 2-sentence narration (verified tick).
+  4 Compare 3 waterfalls: G5 Port fan-out & G1 TCP flags dominate in all.
+  5 ECS high (above tau_hi zone); S = {PortScan}; row R4 fired.
+  6 Packet view shows early SYN packets drive CfC.
+  7 Click ledger seq -> Audit entry -> "Verify" green.
+  Outcome: admin can justify the block (fixes PS "can't justify").
+
+UJ2 Resolve a QUARANTINE (analyst)
+  1 Alert/bell or /review count badge.
+  2 Open ticket: reason R6 (attack-only, mid ECS) or R3 (ambiguous).
+  3 Why? drawer: sources disagree on top groups; ECS breakdown shows which
+    pair disagrees.
+  4 Optional: Run offline LIME for second opinion.
+  5 Submit verdict (class + action + notes).
+  6 Toast: "Verdict recorded; ACI updated"; flow kernel entry updated.
+  Outcome: uncertainty handled by a human, feedback closes the loop.
+
+UJ3 Approve a compiled rule (admin)
+  1 /rules -> Proposed tab -> card "SYN-ratio > a AND port-fanout/10s > b
+    AND mean-size < c -> DROP (PortScan)" (a,b,c from the compiler).
+  2 Open: certificate (agreement, FPR, window, signature tick),
+    realizability (each predicate -> kernel counter), provenance list.
+  3 Accept -> CANARY; progress bar for T seconds; would-drop vs model.
+  4 Pass -> Promote (or auto) -> atomic swap indicator -> PROMOTED.
+  5 FP monitor graph live; TTL countdown.
+  Outcome: "the AI taught the firewall", safely.
+
+UJ4 Audit a decision (auditor)
+  1 /audit -> search by time/flow.
+  2 Decision row -> ledger seq, batch, signature, TPM quote.
+  3 Verify range -> green.
+  4 Export signed bundle (JSON/PDF) -> sha256 shown.
+  Outcome: proves which models/rules made the decision.
+
+UJ5 Adversarial flag (admin)
+  1 Violet alert "ECS collapse on flow X".
+  2 Why? drawer -> adversarial section: ECS low, Lipschitz high, offline vs
+    hot disagreement.
+  3 Flow already rate-limited (quarantine). Admin decides.
+
+UJ6 Demo run (presenter) [SRC section 10]
+  D1 /demo Normal on -> /live green -> Why? on a benign flow.
+  D2 Port scan on -> BLOCK within N packets -> /rules new proposed ->
+     certificate -> canary -> promoted -> next scan dropped by kernel rule
+     (rule hit column shows rule id, brain not needed).
+  D3 Low-and-slow on -> QUARANTINE, low ECS -> /review -> overrule ->
+     verdict flows back (/models shows ACI step).
+  D4 Explainer-manipulation on -> ECS collapse -> adversarial flag.
+  D5 Tamper button -> /audit verify -> RED with first bad seq; TPM panel
+     shows model hash live at that time.
+  D6 /experiments slide view: cross-dataset, E1-E6 tables, limitations.
+
+------------------------------------------------------------------------------
+8. NAVIGATION MAP
+------------------------------------------------------------------------------
+  /login -> /live
+  /live <-> Why? drawer -> /flows/:id (expand) -> /audit?seq=
+                         -> What-if panel
+  /review -> ticket (drawer + verdict) -> /live
+  /rules -> /rules/:id -> provenance -> /flows/:id
+  /audit -> verify / attestation / export
+  /models, /experiments, /demo, /settings from left nav
+  Global: alert toast -> deep link to the relevant entity.
+
+------------------------------------------------------------------------------
+9. EMPTY / ERROR / EDGE STATES
+------------------------------------------------------------------------------
+  - No model set active -> banner "Brain not ready - train & activate"
+    and kernel runs on safety allow-list + any existing rules only.
+  - Learned config missing -> brain refuses to decide; UI shows
+    "Calibration required".
+  - Narrator down -> template text, label "template".
+  - TPM unavailable -> ledger keeps hashing but marks batches UNSIGNED and
+    raises red alert (never silently signs with an unsealed key) [PROPOSED].
+  - Agent disconnected -> red top-bar; policy mode decides fail-closed vs
+    fail-open-with-rate-limit behaviour.
+  - Experiments without runs -> "No result yet".
+
+------------------------------------------------------------------------------
+10. WIREFRAMES (ASCII, desktop)
+------------------------------------------------------------------------------
+ Live:
+ +----------------------------------------------------------------------+
+ | GLASSWALL  [WSL2 lab][XDP generic][model a1b2][Ledger OK][Fail-open] |
+ +------+---------------------------------------------------------------+
+ | Live | flows/s  ALLOW%  BLOCK%  QUAR%  ADV  p50/p99  rules  drift     |
+ | Rev  |---------------------------------------------------------------|
+ | Rules| time  src->dst  proto pk ck  [BADGE] ECS(..) conf  S  top3  rule|
+ | Audit| ...                                                           |
+ | Model|                                       +-- Why? drawer --------+
+ | Exp  |                                       | BLOCK PortScan C16    |
+ | Demo |                                       | narration (verified)  |
+ | Set  |                                       | [GBDT][EBM][CfC] bars |
+ |      |                                       | ECS 0.xx pairs table  |
+ |      |                                       | S={..} alpha_t row R4 |
+ |      |                                       | packet heatmap        |
+ |      |                                       | ledger #seq verify    |
+ +------+---------------------------------------+-----------------------+
+ Rule detail:
+ +----------------------------------------------------------------------+
+ | Rule r-17  PROPOSED  PortScan  DROP  TTL --                          |
+ | <predicates in monospace>                                            |
+ | Certificate: agreement .. FPR .. window .. sig OK  [download]       |
+ | Realizability: pred1 -> src_stats.syn_ratio ...                     |
+ | Canary: [progress] would-drop .. agree .. disagree ..               |
+ | Provenance: 23 decisions [list]                                      |
+ | [Accept] [Reject] [Expire]                                           |
+ +----------------------------------------------------------------------+
+==============================================================================
+END DESIGN FLOW
+==============================================================================
