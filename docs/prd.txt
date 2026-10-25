@@ -1,0 +1,386 @@
+==============================================================================
+GLASSWALL - PRODUCT REQUIREMENTS DOCUMENT (PRD)                    v1.0
+Explainable AI-Based Intelligent Firewall for Transparent Network Packet
+Filtering and Threat Detection   |   Title 15
+Source of truth: "PROJECT IDEATION - FINAL (v3)"
+CONFIDENTIAL - do not upload/push/share outside the team before the
+provisional patent application is filed.
+==============================================================================
+
+CONVENTIONS USED IN ALL GLASSWALL DOCS
+  [SRC]       taken directly from the ideation document (v3).
+  [PROPOSED]  an engineering choice added to make the docs buildable; NOT in
+              the ideation doc. The team can change or drop these freely.
+  [LEARNED]   value is fitted on validation data at runtime/training time and
+              must NEVER be hardcoded (k, alpha, tau_hi, tau_lo, fidelity
+              thresholds, etc.). Stored in config/DB with provenance.
+  [MEASURED]  a number that only exists after running an experiment. No doc,
+              slide or UI may show a made-up value for it.
+
+------------------------------------------------------------------------------
+1. PRODUCT SUMMARY
+------------------------------------------------------------------------------
+1.1 One-line pitch [SRC]
+  "GLASSWALL is a firewall that knows when its own explanation can't be
+   trusted, turns what it learns into verified in-kernel rules, and signs
+   every decision so an auditor can prove which model made it."
+
+1.2 What it is
+  A packet-filtering system with:
+   - an in-kernel datapath (XDP/eBPF; fallback tc-eBPF, then nftables) that
+     enforces PASS / DROP / RATE-LIMIT from an atomically updated enforcement
+     table [SRC];
+   - a user-space "brain" with three structurally different models (GBDT,
+     EBM, CfC/NCP) whose explanations are compared in a shared 14-group
+     semantic space [SRC];
+   - an Explanation Consensus Score (ECS) + Mondrian conformal prediction with
+     Adaptive Conformal Inference (ACI) that jointly choose ALLOW / BLOCK /
+     QUARANTINE (+ adversarial flag) [SRC];
+   - an explanation-to-rule compiler that produces kernel-realizable rules,
+     certifies fidelity, canaries them in log-only mode, promotes atomically
+     and rolls back automatically [SRC];
+   - an attested ledger (hash chain + Merkle roots + Ed25519 signature, key
+     sealed in TPM 2.0, model/rule hashes extended into a PCR) [SRC];
+   - a web admin console (React + FastAPI + WebSocket) [SRC].
+
+1.3 Environment [SRC]
+  Windows 10/11 + Docker Desktop (WSL2 backend). No native Linux. All
+  measurements are from a virtualized WSL2 lab; no line-rate claims.
+
+------------------------------------------------------------------------------
+2. PROBLEM STATEMENT
+------------------------------------------------------------------------------
+PS [SRC]: static rules need constant manual updates; AI firewalls are black
+boxes; admins cannot justify allow/block decisions; audits and adoption
+suffer.
+
+Concrete failures in current "explainable" IDS [SRC]:
+  F1 Explanations are post-hoc and UNVERIFIED; explainers can be manipulated
+     (Slack et al., 2020, "Fooling LIME and SHAP"). Explanation = attack
+     surface.
+  F2 Binary allow/block forces a verdict even when model and explanation are
+     both unreliable. No principled "not sure, here is why" state.
+  F3 Explanations are never turned into something ENFORCEABLE or AUDITABLE.
+
+How GLASSWALL answers each:
+  F1 -> Invention 1 (ECS) + Invention 5 (manipulation/evasion detection)
+  F2 -> Invention 2 (conformal + ECS tri-state with QUARANTINE)
+  F3 -> Invention 3 (rule compiler) + Invention 4 (attested ledger)
+
+------------------------------------------------------------------------------
+3. GOALS AND NON-GOALS
+------------------------------------------------------------------------------
+3.1 Goals
+  G-1 Classify flows into multi-class labels (Benign, DoS, DDoS, PortScan,
+      BruteForce, Botnet, WebAttack, Infiltration) [SRC P3].
+  G-2 Produce per-decision, group-level attributions from 3 independent
+      sources and an ECS in [0,1] on the hot path [SRC].
+  G-3 Tri-state enforcement with conformal coverage that holds under drift
+      (ACI) [SRC].
+  G-4 Turn explanations into certified, canaried, auto-expiring,
+      auto-rollback in-kernel rules with provenance [SRC].
+  G-5 Every decision is tamper-evidently logged and attested to the exact
+      model set and rule set that were live [SRC].
+  G-6 Honest, defendable evaluation: corrected labels, temporal splits,
+      de-duplication, cross-dataset tests, FPR at fixed recall [SRC].
+  G-7 Generate patent evidence E1-E6 [SRC].
+  G-8 A 6-minute live demo covering all 5 inventions [SRC].
+
+3.2 Non-goals
+  NG-1 No line-rate / bare-metal throughput claims [SRC].
+  NG-2 No payload inspection by default (privacy, encryption) [SRC].
+  NG-3 LLM never in the decision path [SRC].
+  NG-4 No raw IP addresses or ports as learnable identity features [SRC].
+  NG-5 No claim of ~99% accuracy [SRC].
+  NG-6 Mininet/OpenFlow SDN topology is a stretch goal only [SRC].
+  NG-7 Mamba/SSM and Flow-Transformer only if time remains [SRC].
+  NG-8 No public hosting of the website before the provisional is filed
+       [SRC 13.7]. The "website version" runs locally in Docker.
+
+------------------------------------------------------------------------------
+4. USERS AND PERSONAS
+------------------------------------------------------------------------------
+  P1 Network/security admin - watches live flows, answers "why?", reviews
+     quarantined flows, accepts/rejects rules, sets fail-open/closed policy.
+  P2 Auditor / compliance - searches decisions, verifies ledger integrity,
+     checks TPM-attested model hash, exports signed bundle (CERT-In 2022,
+     DPDP Act 2023, ISO 27001, NIST CSF context [SRC]).
+  P3 ML/security researcher (team) - runs experiments P1-P5, E1-E6,
+     ablations, cross-dataset tests.
+  P4 Demo operator / judge-facing presenter - triggers attack toggles and
+     walks the demo script.
+  P5 Human-study volunteer (8-12) - makes decisions with vs without
+     explanations [SRC].
+  Role model (admin / analyst / auditor / demo) [PROPOSED].
+
+------------------------------------------------------------------------------
+5. FUNCTIONAL REQUIREMENTS
+------------------------------------------------------------------------------
+Priority: M = must (NEVER-CUT list [SRC 11]), S = should, C = could (cut order).
+
+5.1 Datapath (DP) - in-kernel                                    [M]
+  FR-DP-01 Parse Ethernet/IPv4/TCP/UDP/ICMP headers per packet.
+  FR-DP-02 Enforcement lookup order: (1) exact flow verdict map (5-tuple,
+           TTL), (2) per-source verdict map, (3) LPM trie black/white
+           prefixes, (4) compiled rule array.
+  FR-DP-03 Actions: XDP_PASS, XDP_DROP, RATE-LIMIT (per-key token bucket in
+           a BPF map; excess dropped).
+  FR-DP-04 Counters in LRU hash maps: per-flow (packets, bytes, flag counts,
+           first/last ts); per-source rolling windows (SYN count, pps, bytes,
+           distinct dst-port bitmap or bloom, approx distinct dst hosts).
+  FR-DP-05 Ring buffer emits packet records (size, direction, flags,
+           delta-t) for the first N=32 packets of each flow + periodic flow
+           summaries.
+  FR-DP-06 Atomic rule update: write new rule array to shadow map, flip an
+           active-index in a single map update (RCU-style). No packet loss,
+           no program reload.
+  FR-DP-07 TTL expiry of verdict entries and rules.
+  FR-DP-08 Hard-coded safety allow-list (management/ledger ports) can never
+           be dropped. (This is the ONLY intentional hardcode; it is a safety
+           invariant. The list of ports itself comes from config at load.)
+  FR-DP-09 Log-only (shadow-canary) rule mode: count "would-have-dropped"
+           without dropping.
+  FR-DP-10 Attach in xdpgeneric mode on the gateway's two veth interfaces;
+           fallback tc-eBPF (clsact) then nftables (atomic replace / named
+           sets). The path actually used must be recorded.
+
+5.2 Feature extraction (FX)                                      [M]
+  FR-FX-01 Flow feature vector (CICFlowMeter/NetFlow style).
+  FR-FX-02 Packet-timing sequence of first N=32 packets:
+           [size, direction, flag bits, delta-t].
+  FR-FX-03 Source-context features: source history 1m/10m/1h, port/host
+           fan-out, threat-intel/reputation score, black/white list flags.
+  FR-FX-04 Payload features OFF by default.
+  FR-FX-05 Early-decision checkpoints at 8, 16 and 32 packets.
+  FR-FX-06 Every feature maps to exactly one semantic group G1-G14 and
+           carries a "kernel_realizable" flag.
+
+5.3 Dual-model brain (B)                                         [M]
+  FR-B-01 Model 1: LightGBM and XGBoost fast gate (Treelite-compiled) with
+          exact TreeSHAP.
+  FR-B-02 Model 2: EBM glass-box shadow (InterpretML), exact additive terms.
+  FR-B-03 Model 3: CfC with sparse NCP wiring (ncps, PyTorch); consumes the
+          packet sequence + static flow-context vector at readout;
+          attribution via integrated gradients (~16 steps, batched).
+  FR-B-04 All three report attributions in the 14 semantic groups. For CfC:
+          per time-step per channel, then aggregate channel -> group.
+  FR-B-05 Baselines also trained: Random Forest, MLP; ablations LSTM, GRU,
+          1D-CNN, small Transformer. Optional: Mamba/SSM, Flow-Transformer.
+  FR-B-06 Calibrated ensemble probability per class.
+
+5.4 Explanation Consensus Engine (Invention 1)                    [M]
+  FR-ECS-01 For each source pair (i,j):
+            A_ij = alpha * J_k(top-k_i, top-k_j)
+                   + (1 - alpha) * signAgree(top-k_i, top-k_j)
+            ECS = mean over pairs of A_ij, in [0,1].
+  FR-ECS-02 J_k = Jaccard of top-k groups; signAgree = fraction of shared
+            top-k groups with the same attribution sign.
+  FR-ECS-03 k and alpha are [LEARNED] on validation, versioned in DB.
+  FR-ECS-04 Hot path uses only deterministic exact explainers. LIME and
+            KernelSHAP are offline/audit-only.
+  FR-ECS-05 Store per-pair breakdown for the UI.
+
+5.5 Conformal tri-state decision (Invention 2)                    [M]
+  FR-CP-01 Mondrian (class-conditional) conformal; nonconformity =
+           1 - calibrated ensemble probability of the label. MAPIE for split
+           calibration, custom ACI update.
+  FR-CP-02 ACI: alpha_{t+1} = alpha_t + gamma * (alpha_target - err_t).
+           gamma and alpha_target are config; alpha_t persisted.
+  FR-CP-03 Decision table (S = conformal set, E = ECS; tau_hi > tau_lo are
+           [LEARNED] to meet an FPR budget):
+             S only attack,  E >= tau_hi            -> BLOCK
+             S only benign,  E >= tau_hi            -> ALLOW
+             S only attack,  tau_lo <= E < tau_hi   -> QUARANTINE
+             S only benign,  tau_lo <= E < tau_hi   -> ALLOW + shadow-log
+             S has benign AND attack                -> QUARANTINE
+             S empty (OOD)                          -> QUARANTINE
+             E < tau_lo (any S)                     -> QUARANTINE + ADVERSARIAL FLAG
+  FR-CP-04 QUARANTINE = rate-limit flow/source in kernel, keep full
+           metadata, open an explained review ticket.
+  FR-CP-05 Policy parameter: fail-closed vs fail-open-with-rate-limit.
+  FR-CP-06 Decisions are re-evaluated at checkpoints 8/16/32 packets.
+  FR-CP-07 Online coverage uses delayed labels (admin verdicts, honeypots,
+           signature ground truth; replay in experiments).
+
+5.6 Rule compiler (Invention 3)                                   [M]
+  FR-RC-01 Cluster recent blocked/quarantined flows with similar top
+           attributions.
+  FR-RC-02 Distil a short rule (shallow tree / rule list) from model
+           behaviour on the REAL recent-traffic replay buffer (benign +
+           attack), not synthetic perturbations.
+  FR-RC-03 Realizability constraint: only kernel-evaluable features (per-
+           source SYN rate, pps, mean size, port-fan-out bitmap/bloom,
+           flag ratios...). Selection among top-attributed groups.
+  FR-RC-04 Fidelity check: agreement with full model + FPR on held-out recent
+           benign traffic must pass [LEARNED/config] thresholds.
+  FR-RC-05 Shadow-canary in kernel for T seconds (config); compare
+           would-have-dropped vs model decisions.
+  FR-RC-06 Promotion: signed fidelity certificate -> atomic map update ->
+           TTL -> live FP monitor -> AUTOMATIC ROLLBACK.
+  FR-RC-07 Provenance: rule links to ledger entries of originating decisions.
+  FR-RC-08 Admin can accept / reject / expire in Rule Studio.
+
+5.7 Attested ledger (Invention 4)                                 [M]
+  FR-LG-01 Per decision record: {flow id, feature hash, model-set version,
+           decision, conformal set, ECS, top-k group attributions, rule id,
+           timestamp} in an append-only hash chain.
+  FR-LG-02 Batch into Merkle trees; sign root with Ed25519.
+  FR-LG-03 Signing key sealed in TPM 2.0 (swtpm in demo; hardware TPM in
+           production - state this plainly).
+  FR-LG-04 SHA-256 of model files and active rule set extended into a PCR;
+           store TPM quote with signed roots.
+  FR-LG-05 Verifier script proves no edit / delete / reorder; reports the
+           first broken position.
+
+5.8 Manipulation & evasion detection (Invention 5)                [M]
+  FR-ADV-01 Signals: ECS collapse; attribution instability under tiny
+            protocol-constrained perturbations (local Lipschitz estimate);
+            disagreement offline LIME/KernelSHAP vs hot-path explainers; OOD
+            score from the conformal set.
+  FR-ADV-02 Evasion tests: low-and-slow, padding (protocol-respecting).
+  FR-ADV-03 Reproduce Slack-style scaffolding attack against the offline
+            LIME path; show disagreement flag.
+
+5.9 Drift & retraining                                            [S]
+  FR-DR-01 ADWIN (river) on score and feature-group streams.
+  FR-DR-02 Drift -> conformal recalibration + retrain queue.
+  FR-DR-03 Admin verdicts -> retraining labels + ACI err_t.
+
+5.10 Narrator                                                     [S/C]
+  FR-NR-01 Qwen3 small (1.7B-4B GGUF via Ollama/llama.cpp, CPU), async.
+  FR-NR-02 Input is structured JSON only (decision, signed top-k group
+           attributions, ECS, rule).
+  FR-NR-03 Verifier rejects any number/feature name not in the input; falls
+           back to deterministic template.
+  FR-NR-04 Never in decision path; local only.
+
+5.11 Counterfactuals                                              [S]
+  FR-CF-01 DiCE-style minimal changes restricted to realizable features
+           ("if SYN-ratio were below X this would be allowed").
+
+5.12 Admin console (website)                                      [M]
+  See ui_ux_requirements.txt. Pages: Live flows, Why? drawer, What-if,
+  Rule studio, Review queue, Audit, Experiments, Demo attack toggles.
+
+------------------------------------------------------------------------------
+6. NON-FUNCTIONAL REQUIREMENTS
+------------------------------------------------------------------------------
+  NFR-01 Performance: report p50/p99 decision latency, flows/s, CPU/RAM,
+         time-to-block [SRC P5]. Targets are set after the Week-1 baseline
+         [MEASURED]; none are promised in advance.
+  NFR-02 Safety: management/ledger allow-list never dropped; erroneous rule
+         cannot lock out the admin.
+  NFR-03 Atomicity: datapath never sees a half-written rule set.
+  NFR-04 Integrity: ledger tamper detection target 100% for edit/delete/
+         reorder (E5) [SRC].
+  NFR-05 Privacy: no payload by default; narrator local; no traffic data
+         leaves the box.
+  NFR-06 Reproducibility: every experiment row stores dataset, split, seed,
+         config hash, commit hash. Raw logs kept (reduction to practice).
+  NFR-07 Honesty: UI and reports label environment (WSL2, swtpm) and never
+         display placeholder numbers as results.
+  NFR-08 Confidentiality: private repo only; no public push before filing.
+  NFR-09 Portability: everything runs via docker compose on Windows+WSL2.
+  NFR-10 Config-driven: every tunable lives in config/glasswall.yaml or DB,
+         with provenance; no magic numbers in code.
+
+------------------------------------------------------------------------------
+7. DATA REQUIREMENTS [SRC section 7]
+------------------------------------------------------------------------------
+  Datasets: CIC-IDS2017 (corrected labels), CSE-CIC-IDS2018, UNSW-NB15,
+  TON_IoT, Bot-IoT, CIC-DDoS2019, NF-UQ-NIDS; NF-*-v2 for cross-dataset.
+  PCAP problem answer:
+   (a) one day's PCAP at a time -> first-32 sequences -> delete PCAP;
+   (b) own labelled lab traffic (hping3/nmap/hydra/slowhttptest; benign
+       curl/wget/iperf3/replays);
+   (c) flow-only datasets: CfC over per-source sequence of flow records.
+  Storage: Parquet + Polars/DuckDB, sampled subsets first.
+  Hygiene: fix labels, drop duplicates, remove constant/infinite columns,
+  class weights inside folds only, no IP/port identity features (ablation).
+
+------------------------------------------------------------------------------
+8. SUCCESS METRICS (all [MEASURED])
+------------------------------------------------------------------------------
+  Detection: per-class P/R/F1, macro-F1, PR-AUC, FPR at fixed recall;
+    temporal split; cross-dataset drop.
+  Operations: p50/p99 latency, flows/s, CPU/RAM, time-to-block.
+  Explanation: deletion/insertion fidelity AUC, stability, sparsity (groups
+    for 90% mass), ECS vs actual agreement, rule fidelity, human study
+    time-to-decision & correctness.
+  Patent evidence:
+    E1 ECS-gated quarantine vs ungated: FPR at equal recall; share of wrong
+       decisions caught by low ECS.
+    E2 Conformal + ACI coverage vs target on drifting stream.
+    E3 Certified vs uncertified rules; canary-then-promote vs direct.
+    E4 In-kernel vs user-space drop latency/throughput (same host).
+    E5 Ledger tamper detection; TPM quote verification; verify time.
+    E6 Manipulation/evasion detection rate with vs without ECS.
+  Baselines: static rules (Snort/Suricata or hand rules), plain XGBoost,
+    XGBoost + post-hoc SHAP, LSTM, small Transformer.
+
+------------------------------------------------------------------------------
+9. RELEASE SCOPE / MILESTONES (detail in implementation_plan.txt)
+------------------------------------------------------------------------------
+  Week 0  prior art, claim chart, patent agent, provisional drafting.
+  Week 1  testbed + XDP hard-coded verdict + atomic swap (first E4);
+          data pipeline + temporal splits + GBDT/RF/MLP.
+  Week 2  EBM + CfC + ablations; groups; ECS; conformal+ACI; tri-state
+          (E1, E2).
+  Week 3  rule compiler + canary + rollback (E3); ledger + swtpm (E5);
+          explainer attacks (E6).
+  Week 4  console, narrator+verifier, human study, end-to-end demo.
+  Week 5  rehearsal, report, patent spec inputs, buffer.
+  NEVER cut: ECS, tri-state+conformal, rule compiler w/ canary/rollback,
+  in-kernel enforcement, ledger, temporal + cross-dataset results.
+  Cut order: Transformer/Mamba -> Mininet -> narrator polish -> human-study
+  size.
+
+------------------------------------------------------------------------------
+10. DEMO ACCEPTANCE (6 minutes) [SRC section 10]
+------------------------------------------------------------------------------
+  D1 Normal traffic green; Why? drawer on benign flow.
+  D2 nmap scan -> BLOCK within N packets -> proposed rule + certificate ->
+     canary pass -> promoted -> kernel rule drops next scan.
+  D3 Low-and-slow brute force -> QUARANTINE, low ECS, admin overrules,
+     verdict flows back.
+  D4 Explainer-manipulation attack -> ECS collapses -> adversarial flag.
+  D5 Edit one ledger row in DB -> verification fails red; TPM quote shows
+     which model was live.
+  D6 One slide: cross-dataset numbers, E1-E6 tables, honest limitations.
+
+------------------------------------------------------------------------------
+11. RISKS & LIMITATIONS [SRC section 12]
+------------------------------------------------------------------------------
+  WSL2 virtualized (no line rate); swtpm not hardware TPM; CfC may not beat
+  GBDT; encrypted traffic = metadata only; lab != production; online coverage
+  needs delayed labels; kernel rules limited to kernel-computable features;
+  attribution != causation (ECS measures agreement, not truth); LLM
+  hallucination bounded by verifier + template + off-path.
+
+------------------------------------------------------------------------------
+12. LEGAL / IP CONSTRAINTS [SRC section 13]
+------------------------------------------------------------------------------
+  - Indian Patent Act s.3(k): claims drafted as a technical system acting on
+    packets in the kernel with measured technical effects.
+  - Provisional first; complete spec within 12 months; PCT decision within
+    12 months.
+  - No public disclosure (GitHub public, hackathon text, papers, social) of
+    novel internals before filing.
+  - Invention log: date, who conceived what, commit hashes, results.
+  - Registered patent agent finalises claims; nothing guarantees a grant.
+
+------------------------------------------------------------------------------
+13. OPEN QUESTIONS (to resolve, not to guess)
+------------------------------------------------------------------------------
+  Q1 Which enforcement path works on your WSL2 kernel (XDP generic / tc /
+     nft)? -> decided by Week-1 test, recorded.
+  Q2 Go+cilium/ebpf vs C+libbpf for the agent (default Go [SRC]).
+  Q3 Value of fpr_budget for tau learning (team/policy decision).
+  Q4 Canary duration T and fidelity thresholds (set from validation).
+  Q5 Exact list of kernel-realizable features (depends on what DP counters
+     you actually implement).
+  Q6 Which PCR index to use for model/rule measurements.
+  Q7 Narrator model size (1.7B vs 4B) based on CPU budget.
+==============================================================================
+END PRD
+==============================================================================
